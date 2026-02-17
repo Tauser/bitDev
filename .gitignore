@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ambientes Virtuais
+venv/
+env/
+
+# Arquivos Temporários e Backups do Sistema
+*.tmp
+*.bak
+
+# Biblioteca da Matriz (O install.sh baixa e compila isso automaticamente)
+rpi-rgb-led-matrix/

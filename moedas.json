@@ -1,0 +1,29 @@
+{
+  "secundarias": ["ETHUSDT", "XRPUSDT"],
+  "brilho": 73,
+  "last_brilho_change": 1771036880.9281318,
+  "modo_noturno": false,
+  "cidade": "Sao_Paulo",
+  "pages": [
+    {
+      "id": "DASHBOARD",
+      "nome": "Dashboard Cripto",
+      "enabled": true,
+      "tempo": 30
+    },
+    { "id": "BOLSA", "nome": "Bolsa & Mercado", "enabled": true, "tempo": 15 },
+    {
+      "id": "IMPRESSORA",
+      "nome": "Impressora 3D",
+      "enabled": true,
+      "tempo": 15
+    },
+    {
+      "id": "GALERIA",
+      "nome": "Galeria PixelArt",
+      "enabled": true,
+      "tempo": 10
+    }
+  ],
+  "printer_ip": "192.168.1.100"
+}
