@@ -433,10 +433,7 @@
               <span class="info-label"
                 ><i class="fa-solid fa-temperature-half"></i> CPU Temp</span
               >
-              <span
-                class="info-value"
-                style="color: {% if cpu_temp > 70 %}var(--danger-color){% elif cpu_temp > 55 %}var(--warning-color){% else %}var(--success-color){% endif %};"
-              >
+              <span class="info-value" style="color: {{ cpu_color }};">
                 {{ cpu_temp }}°C
               </span>
             </div>
@@ -451,7 +448,7 @@
               >
                 <div
                   class="disk-progress-fill"
-                  style="width: {{ disk_percent }}%; background: {% if disk_percent > 90 %}var(--danger-color){% elif disk_percent > 75 %}var(--warning-color){% else %}var(--success-color){% endif %};"
+                  style="width: {{ disk_percent }}%; background: {{ disk_color }};"
                 ></div>
               </div>
               <span style="font-size: 0.8rem; color: var(--text-secondary)">
@@ -469,7 +466,7 @@
               >
                 <div
                   class="disk-progress-fill"
-                  style="width: {{ ram_percent }}%; background: {% if ram_percent > 85 %}var(--danger-color){% elif ram_percent > 60 %}var(--warning-color){% else %}var(--accent-color){% endif %};"
+                  style="width: {{ ram_percent }}%; background: {{ ram_color }};"
                 ></div>
               </div>
               <span style="font-size: 0.8rem; color: var(--text-secondary)">
@@ -494,10 +491,7 @@
               <span class="info-label"
                 ><i class="fa-solid fa-wifi"></i> Wi-Fi</span
               >
-              <span
-                class="info-value"
-                style="color: {% if wifi_percent > 70 %}var(--success-color){% elif wifi_percent > 40 %}var(--warning-color){% else %}var(--danger-color){% endif %};"
-              >
+              <span class="info-value" style="color: {{ wifi_color }};">
                 {{ wifi_percent }}%
               </span>
               <span
@@ -665,6 +659,18 @@
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr; gap: 10px">
+          <a
+            href="/atualizar"
+            class="btn btn-primary"
+            onclick="
+              return confirm(
+                'Deseja buscar atualizações no GitHub e reiniciar o sistema?',
+              );
+            "
+          >
+            <i class="fa-solid fa-cloud-arrow-down"></i> Atualizar Versão
+          </a>
+
           <a
             href="#"
             class="btn btn-secondary"

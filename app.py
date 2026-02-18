@@ -67,6 +67,19 @@ def salvar_config(config):
     except Exception as e:
         print(f"Erro crítico ao salvar config: {e}")
 
+def verificar_atualizacao():
+    # Se não tem pasta .git (instalação manual), mostra botão para permitir reparação
+    if not os.path.exists(os.path.join(cfg.BASE_DIR, ".git")):
+        return True
+    try:
+        # Verifica atualizações silenciosamente (timeout curto para não travar a página)
+        subprocess.run(['git', 'fetch'], cwd=cfg.BASE_DIR, timeout=2, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        local = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=cfg.BASE_DIR).decode().strip()
+        remote = subprocess.check_output(['git', 'rev-parse', '@{u}'], cwd=cfg.BASE_DIR).decode().strip()
+        return local != remote
+    except:
+        return False # Se der erro (sem internet), assume que não tem update
+
 @app.route('/')
 def index():
     config = ler_config()
@@ -138,6 +151,25 @@ def index():
     except: 
         pass
         
+    # --- Lógica de Cores (Calculada aqui para limpar o HTML) ---
+    cpu_color = 'var(--success-color)'
+    if cpu_temp > 70: cpu_color = 'var(--danger-color)'
+    elif cpu_temp > 55: cpu_color = 'var(--warning-color)'
+
+    disk_color = 'var(--success-color)'
+    if disk_percent > 90: disk_color = 'var(--danger-color)'
+    elif disk_percent > 75: disk_color = 'var(--warning-color)'
+
+    ram_color = 'var(--accent-color)'
+    if ram_percent > 85: ram_color = 'var(--danger-color)'
+    elif ram_percent > 60: ram_color = 'var(--warning-color)'
+
+    wifi_color = 'var(--danger-color)'
+    if wifi_percent > 70: wifi_color = 'var(--success-color)'
+    elif wifi_percent > 40: wifi_color = 'var(--warning-color)'
+
+    update_available = verificar_atualizacao()
+
     library_gifs = DEFAULT_LIBRARY
 
     return render_template('index.html', 
@@ -159,7 +191,12 @@ def index():
                            load_1m=load_1m,
                            wifi_percent=wifi_percent,
                            local_ip=local_ip,
-                           library=library_gifs)
+                           library=library_gifs,
+                           cpu_color=cpu_color,
+                           disk_color=disk_color,
+                           ram_color=ram_color,
+                           wifi_color=wifi_color,
+                           update_available=update_available)
 
 @app.route('/brilho', methods=['POST'])
 def ajustar_brilho():
@@ -416,6 +453,40 @@ def search_tenor():
             return jsonify({'results': gifs, 'next': results.get('next', '')})
     except: pass
     return jsonify({'results': [], 'next': ''})
+
+
+@app.route('/atualizar', methods=['GET', 'POST'])
+def atualizar_app():
+    try:
+        print(">> Iniciando atualizacao do sistema...")
+        repo_dir = cfg.BASE_DIR
+        
+        # Configura git para permitir operacoes como root em pasta de usuario
+        subprocess.run(['git', 'config', '--global', '--add', 'safe.directory', repo_dir], check=False)
+        
+        try:
+            subprocess.run(['git', 'pull'], cwd=repo_dir, check=True)
+        except:
+            print(">> Git pull falhou. Tentando reparar repositorio...")
+            repo_url = "https://github.com/Tauser/bitDev.git"
+            
+            if not os.path.exists(os.path.join(repo_dir, ".git")):
+                subprocess.run(['git', 'init'], cwd=repo_dir, check=True)
+            
+            subprocess.run(['git', 'remote', 'remove', 'origin'], cwd=repo_dir, check=False)
+            subprocess.run(['git', 'remote', 'add', 'origin', repo_url], cwd=repo_dir, check=True)
+            subprocess.run(['git', 'fetch', '--all'], cwd=repo_dir, check=True)
+            
+            try:
+                subprocess.run(['git', 'reset', '--hard', 'origin/main'], cwd=repo_dir, check=True)
+            except:
+                subprocess.run(['git', 'reset', '--hard', 'origin/master'], cwd=repo_dir, check=True)
+
+        subprocess.run(['sudo', 'systemctl', 'restart', 'crypto.service'], check=True)
+        flash("Sistema atualizado e reiniciado com sucesso!", 'success')
+    except Exception as e:
+        flash(f"Erro ao atualizar: {e}", 'error')
+    return redirect('/')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
