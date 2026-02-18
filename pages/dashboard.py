@@ -22,7 +22,7 @@ def init():
 def draw(canv):
     global slide_secundarias_idx, last_slide_time, anim_saitama_idx, last_anim_saitama_time
 
-    # Animação Saitama
+    # Animação
     if frames_saitama and (time.time() - last_anim_saitama_time > cfg.GIF_SPEED):
         anim_saitama_idx = (anim_saitama_idx + 1) % len(frames_saitama)
         last_anim_saitama_time = time.time()
@@ -62,13 +62,10 @@ def draw(canv):
     sec = data.dados["secondary"]
     qtd = len(sec)
     
-    # --- CORREÇÃO: Validação de Índice ---
-    # Se o índice estiver fora do limite (ex: moedas removidas ou estado antigo), reseta para o início.
     if slide_secundarias_idx * 2 >= qtd:
         slide_secundarias_idx = 0
 
     if qtd > 0:
-        # Lógica de Rotação (A cada TEMPO_SLIDE segundos)
         if time.time() - last_slide_time > cfg.TEMPO_SLIDE:
             slide_secundarias_idx += 1
             if slide_secundarias_idx * 2 >= qtd: 

@@ -4,581 +4,155 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BITDEV Monitor</title>
-    <!-- Fonte Inter (Google Fonts) -->
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap"
       rel="stylesheet"
     />
-    <!-- Ícones (FontAwesome) -->
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
     />
-
-    <style>
-      :root {
-        --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-        --card-bg: rgba(30, 41, 59, 0.7);
-        --card-border: 1px solid rgba(255, 255, 255, 0.1);
-        --text-primary: #f8fafc;
-        --text-secondary: #94a3b8;
-        --accent-color: #3b82f6;
-        --accent-hover: #2563eb;
-        --success-color: #10b981;
-        --danger-color: #ef4444;
-        --warning-color: #f59e0b;
-        --radius: 16px;
-        --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-      }
-
-      * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
-
-      body {
-        font-family: "Inter", sans-serif;
-        background: var(--bg-gradient);
-        color: var(--text-primary);
-        min-height: 100vh;
-        display: flex;
-        justify-content: center;
-        padding: 20px;
-        line-height: 1.6;
-      }
-
-      .container {
-        width: 100%;
-        max-width: 600px;
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-      }
-
-      /* Header */
-      header {
-        text-align: center;
-        margin-bottom: 10px;
-      }
-      h1 {
-        font-weight: 700;
-        font-size: 1.8rem;
-        background: linear-gradient(to right, #60a5fa, #a78bfa);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 5px;
-      }
-      .subtitle {
-        color: var(--text-secondary);
-        font-size: 0.9rem;
-      }
-
-      /* Cards */
-      .card {
-        background: var(--card-bg);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: var(--card-border);
-        border-radius: var(--radius);
-        padding: 24px;
-        box-shadow: var(--shadow);
-      }
-
-      .card-header {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 20px;
-        color: var(--text-primary);
-        font-weight: 600;
-        font-size: 1.1rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        padding-bottom: 10px;
-      }
-      .card-header i {
-        color: var(--accent-color);
-      }
-
-      /* Flash Messages */
-      .flash-container {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-      .flash-msg {
-        padding: 12px 16px;
-        border-radius: 8px;
-        font-size: 0.9rem;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-      .flash-error {
-        background: rgba(239, 68, 68, 0.2);
-        border: 1px solid var(--danger-color);
-        color: #fca5a5;
-      }
-      .flash-success {
-        background: rgba(16, 185, 129, 0.2);
-        border: 1px solid var(--success-color);
-        color: #6ee7b7;
-      }
-
-      /* Slider Customizado */
-      input[type="range"] {
-        -webkit-appearance: none;
-        width: 100%;
-        background: transparent;
-      }
-      input[type="range"]::-webkit-slider-thumb {
-        -webkit-appearance: none;
-        height: 20px;
-        width: 20px;
-        border-radius: 50%;
-        background: var(--accent-color);
-        cursor: pointer;
-        margin-top: -8px;
-        box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
-      }
-      input[type="range"]::-webkit-slider-runnable-track {
-        width: 100%;
-        height: 4px;
-        cursor: pointer;
-        background: #334155;
-        border-radius: 2px;
-      }
-
-      /* Toggle Switch (iOS Style) */
-      .page-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        background: rgba(0, 0, 0, 0.2);
-        padding: 12px 16px;
-        border-radius: 12px;
-        margin-bottom: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.05);
-      }
-
-      .switch-wrapper {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-
-      .toggle-switch {
-        position: relative;
-        display: inline-block;
-        width: 44px;
-        height: 24px;
-      }
-      .toggle-switch input {
-        opacity: 0;
-        width: 0;
-        height: 0;
-      }
-      .slider {
-        position: absolute;
-        cursor: pointer;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: #475569;
-        transition: 0.4s;
-        border-radius: 34px;
-      }
-      .slider:before {
-        position: absolute;
-        content: "";
-        height: 18px;
-        width: 18px;
-        left: 3px;
-        bottom: 3px;
-        background-color: white;
-        transition: 0.4s;
-        border-radius: 50%;
-      }
-      input:checked + .slider {
-        background-color: var(--success-color);
-      }
-      input:checked + .slider:before {
-        transform: translateX(20px);
-      }
-
-      /* Inputs de Tempo */
-      .time-input-group {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        background: #0f172a;
-        padding: 4px 8px;
-        border-radius: 6px;
-        border: 1px solid #334155;
-      }
-      .time-input-group input {
-        background: transparent;
-        border: none;
-        color: white;
-        width: 40px;
-        text-align: center;
-        font-weight: bold;
-      }
-      .time-input-group input:focus {
-        outline: none;
-      }
-      .time-input-group span {
-        font-size: 0.8rem;
-        color: var(--text-secondary);
-      }
-
-      /* Botões */
-      .btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        padding: 12px 20px;
-        border: none;
-        border-radius: 8px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-        text-decoration: none;
-        width: 100%;
-        font-size: 0.95rem;
-      }
-      .btn-primary {
-        background: var(--accent-color);
-        color: white;
-        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-      }
-      .btn-primary:hover {
-        background: var(--accent-hover);
-        transform: translateY(-1px);
-      }
-
-      .btn-secondary {
-        background: #334155;
-        color: white;
-      }
-      .btn-secondary:hover {
-        background: #475569;
-      }
-
-      .btn-danger {
-        background: rgba(239, 68, 68, 0.1);
-        color: var(--danger-color);
-        border: 1px solid var(--danger-color);
-      }
-      .btn-danger:hover {
-        background: var(--danger-color);
-        color: white;
-      }
-
-      .btn-restart {
-        background: transparent;
-        color: var(--warning-color);
-        border: 1px solid var(--warning-color);
-        margin-top: 20px;
-      }
-      .btn-restart:hover {
-        background: var(--warning-color);
-        color: #000;
-        cursor: pointer;
-      }
-
-      /* Lista de Moedas (Chips) */
-      .coin-container {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-bottom: 20px;
-      }
-      .coin-chip {
-        background: #1e293b;
-        border: 1px solid #334155;
-        padding: 6px 12px;
-        border-radius: 20px;
-        font-size: 0.9rem;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        transition: 0.2s;
-      }
-      .coin-chip:hover {
-        border-color: var(--accent-color);
-      }
-      .coin-chip a {
-        color: var(--text-secondary);
-        text-decoration: none;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 20px;
-        height: 20px;
-        border-radius: 50%;
-        transition: 0.2s;
-      }
-      .coin-chip a:hover {
-        background: rgba(239, 68, 68, 0.2);
-        color: var(--danger-color);
-      }
-
-      /* Input de Adicionar */
-      .add-coin-form {
-        display: flex;
-        gap: 10px;
-      }
-      .input-text {
-        flex: 1;
-        background: #0f172a;
-        border: 1px solid #334155;
-        padding: 12px;
-        border-radius: 8px;
-        color: white;
-        font-family: inherit;
-      }
-      .input-text:focus {
-        outline: none;
-        border-color: var(--accent-color);
-      }
-    </style>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}?v=2.0"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
   <body>
+    {% macro flash_messages(categories) %} {% with messages =
+    get_flashed_messages(with_categories=true, category_filter=categories) %} {%
+    if messages %}
+    <div class="flash-container" style="margin-bottom: 15px">
+      {% for category, message in messages %}
+      <div
+        class="flash-msg {% if 'error' in category %}flash-error{% else %}flash-success{% endif %}"
+      >
+        <i
+          class="fa-solid {% if 'error' in category %}fa-circle-exclamation{% else %}fa-circle-check{% endif %}"
+        ></i>
+        <span style="flex: 1">{{ message }}</span>
+        <i
+          class="fa-solid fa-xmark close-btn"
+          onclick="this.parentElement.remove()"
+        ></i>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %} {% endwith %} {% endmacro %}
+
     <div class="container">
       <header>
         <h1><i class="fa-brands fa-bitcoin"></i> BITDEV</h1>
         <div class="subtitle">Painel de Controle do Monitor</div>
       </header>
 
-      <!-- Card: Configuração Wi-Fi -->
-      <div class="card">
-        <div class="card-header">
-          <i class="fa-solid fa-wifi"></i> Configuração de Rede
-        </div>
-        <form
-          action="/salvar_wifi"
-          method="POST"
-          style="display: flex; flex-direction: column; gap: 10px"
+      <div class="global-actions">
+        <a
+          href="/reiniciar"
+          class="btn btn-restart"
+          style="
+            margin: 0;
+            border-color: var(--warning-color);
+            color: var(--warning-color);
+          "
+          onclick="return confirm('Reiniciar o serviço do painel?');"
         >
-          <input
-            type="text"
-            name="ssid"
-            class="input-text"
-            placeholder="Nome da Rede (SSID)"
-            required
-          />
-          <input
-            type="password"
-            name="psk"
-            class="input-text"
-            placeholder="Senha do Wi-Fi"
-            required
-          />
-          <div style="display: flex; gap: 10px">
-            <button type="submit" class="btn btn-primary">
-              <i class="fa-solid fa-save"></i> Salvar e Conectar
-            </button>
-            <a
-              href="/wifi_reset"
-              class="btn btn-secondary"
-              style="width: auto"
-              title="Forçar Reconexão"
-              ><i class="fa-solid fa-rotate"></i
-            ></a>
-          </div>
-        </form>
+          <i class="fa-solid fa-rotate"></i> Reiniciar
+        </a>
+        <a
+          href="/desligar"
+          class="btn btn-restart"
+          style="
+            margin: 0;
+            border-color: var(--danger-color);
+            color: var(--danger-color);
+          "
+          onclick="
+            return confirm(
+              'Tem certeza? Isso desligará o Raspberry Pi completamente.',
+            );
+          "
+        >
+          <i class="fa-solid fa-power-off"></i> Desligar
+        </a>
       </div>
 
-      <!-- Card: Brilho -->
-      <div class="card">
-        <div class="card-header">
-          <i class="fa-solid fa-sun"></i> Brilho da Tela
-        </div>
-        <form action="/brilho" method="POST">
-          <div
-            style="
-              display: flex;
-              justify-content: space-between;
-              margin-bottom: 10px;
-              font-size: 0.9rem;
-              color: var(--text-secondary);
-            "
-          >
-            <span>Escuro</span>
-            <span style="color: var(--accent-color); font-weight: bold"
-              >{{ brilho }}%</span
+      {{ flash_messages(['success', 'error', 'info', 'warning']) }}
+
+      <div class="tabs">
+        <button class="tab-btn active" onclick="openTab(event, 'tab-controle')">
+          <i class="fa-solid fa-sliders"></i> Controle
+        </button>
+        <button class="tab-btn" onclick="openTab(event, 'tab-conteudo')">
+          <i class="fa-solid fa-layer-group"></i> Conteúdo
+        </button>
+        <button class="tab-btn" onclick="openTab(event, 'tab-sistema')">
+          <i class="fa-solid fa-microchip"></i> Sistema
+        </button>
+      </div>
+
+      <div id="tab-controle" class="tab-content active">
+        {{ flash_messages(['control_success', 'control_error']) }}
+
+        <div class="card">
+          <div class="card-header">
+            <i class="fa-solid fa-sun"></i> Brilho da Tela
+          </div>
+          <form action="/brilho" method="POST">
+            <div
+              style="
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 10px;
+                font-size: 0.9rem;
+                color: var(--text-secondary);
+              "
             >
-            <span>Claro</span>
-          </div>
-          <input
-            type="range"
-            name="nivel"
-            min="10"
-            max="100"
-            value="{{ brilho }}"
-            onchange="this.form.submit()"
-          />
-        </form>
-      </div>
-
-      <!-- Card: Letreiro Digital -->
-      <div class="card">
-        <div class="card-header">
-          <i class="fa-solid fa-comment-dots"></i> Letreiro (Rodapé)
-        </div>
-        <form
-          action="/salvar_msg"
-          method="POST"
-          style="display: flex; gap: 10px"
-        >
-          <input
-            type="text"
-            name="msg"
-            class="input-text"
-            placeholder="Digite uma mensagem (Deixe vazio para voltar ao normal)"
-            value="{{ request.args.get('msg', '') }}"
-          />
-          <button type="submit" class="btn btn-primary" style="width: auto">
-            <i class="fa-solid fa-check"></i>
-          </button>
-        </form>
-      </div>
-
-      <!-- Card: Playlist -->
-      <div class="card">
-        <div class="card-header">
-          <i class="fa-solid fa-layer-group"></i> Gerenciar Telas
-        </div>
-        <form action="/salvar_playlist" method="POST">
-          {% for page in pages %}
-          <div class="page-row">
-            <div class="switch-wrapper">
-              <label class="toggle-switch">
-                <input
-                  type="checkbox"
-                  name="enable_{{ page.id }}"
-                  {%
-                  if
-                  page.enabled
-                  %}checked{%
-                  endif
-                  %}
-                />
-                <span class="slider"></span>
-              </label>
-              <span style="font-weight: 500">{{ page.nome }}</span>
+              <span>Escuro</span>
+              <span style="color: var(--accent-color); font-weight: bold"
+                >{{ brilho }}%</span
+              >
+              <span>Claro</span>
             </div>
+            <input
+              type="range"
+              name="nivel"
+              min="10"
+              max="100"
+              value="{{ brilho }}"
+              onchange="this.form.submit()"
+            />
+          </form>
+        </div>
 
-            <div class="time-input-group">
-              <i
-                class="fa-regular fa-clock"
-                style="font-size: 0.8rem; color: #64748b"
-              ></i>
-              <input
-                type="number"
-                name="time_{{ page.id }}"
-                value="{{ page.tempo }}"
-                min="5"
-              />
-              <span>s</span>
-            </div>
+        <div class="card">
+          <div class="card-header">
+            <i class="fa-solid fa-comment-dots"></i> Letreiro (Rodapé)
           </div>
-          {% endfor %}
-          <button
-            type="submit"
-            class="btn btn-primary"
-            style="margin-top: 15px"
+          <form
+            action="/salvar_msg"
+            method="POST"
+            style="display: flex; gap: 10px"
           >
-            <i class="fa-solid fa-save"></i> Salvar Alterações
-          </button>
-        </form>
-      </div>
-
-      <!-- Card: Impressora 3D -->
-      <div class="card">
-        <div class="card-header">
-          <i class="fa-solid fa-cube"></i> Configuração Klipper (Voron)
-        </div>
-        <form
-          action="/salvar_printer"
-          method="POST"
-          style="display: flex; flex-direction: column; gap: 10px"
-        >
-          <input
-            type="text"
-            name="printer_name"
-            class="input-text"
-            placeholder="Nome (Ex: VORON 2.4)"
-            value="{{ printer_name }}"
-          />
-          <input
-            type="text"
-            name="printer_ip"
-            class="input-text"
-            placeholder="IP da Impressora (Ex: 192.168.1.50)"
-            value="{{ printer_ip }}"
-            required
-          />
-          <button type="submit" class="btn btn-primary">
-            <i class="fa-solid fa-save"></i>
-          </button>
-        </form>
-      </div>
-
-      <!-- Card: Moedas -->
-      <div class="card">
-        <div class="card-header">
-          <i class="fa-solid fa-coins"></i> Moedas Monitoradas
+            <input
+              type="text"
+              name="msg"
+              class="input-text"
+              placeholder="Digite uma mensagem (Deixe vazio para voltar ao normal)"
+              value="{{ msg_custom }}"
+            />
+            <button type="submit" class="btn btn-primary" style="width: auto">
+              <i class="fa-solid fa-check"></i>
+            </button>
+            {% if msg_custom %}
+            <a href="/limpar_msg" class="btn btn-danger" style="width: auto">
+              <i class="fa-solid fa-trash"></i>
+            </a>
+            {% endif %}
+          </form>
         </div>
 
-        <!-- Mensagens Flash (Movido para cá) -->
-        {% with messages = get_flashed_messages(with_categories=true) %} {% if
-        messages %}
-        <div class="flash-container" style="margin-bottom: 20px">
-          {% for category, message in messages %}
-          <div
-            class="flash-msg {% if category == 'error' %}flash-error{% else %}flash-success{% endif %}"
-          >
-            <i
-              class="fa-solid {% if category == 'error' %}fa-circle-exclamation{% else %}fa-circle-check{% endif %}"
-            ></i>
-            {{ message }}
-          </div>
-          {% endfor %}
-        </div>
-        {% endif %} {% endwith %}
-
-        <div class="coin-container">
-          {% for moeda in moedas %}
-          <div class="coin-chip">
-            {{ moeda }}
-            <a href="/remover/{{ moeda }}" title="Remover"
-              ><i class="fa-solid fa-xmark"></i
-            ></a>
-          </div>
-          {% endfor %}
-        </div>
-
-        <form action="/adicionar" method="POST" class="add-coin-form">
-          <input
-            type="text"
-            name="simbolo"
-            class="input-text"
-            placeholder="Ex: SOL, ADA"
-            required
-            autocomplete="off"
-          />
-          <button type="submit" class="btn btn-secondary" style="width: auto">
-            <i class="fa-solid fa-plus"></i>
-          </button>
-        </form>
-      </div>
-
-      <!-- Ações Extras -->
-      <div style="display: grid; grid-template-columns: 1fr; gap: 10px">
         <a
           href="/alternar_noturno"
           class="btn btn-secondary"
@@ -598,27 +172,510 @@
             {{ 'ATIVADO' if noturno else 'DESATIVADO' }}
           </span>
         </a>
+      </div>
 
-        <a
-          href="/reiniciar"
-          class="btn btn-restart"
-          onclick="return confirm('Reiniciar o serviço do painel?');"
-        >
-          <i class="fa-solid fa-rotate"></i> Reiniciar Sistema
-        </a>
+      <div id="tab-conteudo" class="tab-content">
+        <div class="card">
+          <div class="card-header">
+            <i class="fa-solid fa-coins"></i> Moedas Monitoradas
+          </div>
 
-        <a
-          href="/desligar"
-          class="btn btn-restart"
-          style="border-color: var(--danger-color); color: var(--danger-color)"
-          onclick="
-            return confirm(
-              'Tem certeza? Isso desligará o Raspberry Pi completamente.',
-            );
-          "
-        >
-          <i class="fa-solid fa-power-off"></i> Desligar Seguro (Proteger SD)
-        </a>
+          {{ flash_messages(['coin_success', 'coin_error']) }}
+
+          <div class="coin-container" id="coin-list">
+            {% for moeda in moedas %}
+            <div class="coin-chip" data-symbol="{{ moeda }}">
+              {{ moeda }}
+              <a href="/remover/{{ moeda }}" title="Remover"
+                ><i class="fa-solid fa-xmark"></i
+              ></a>
+            </div>
+            {% endfor %}
+          </div>
+
+          <form action="/adicionar" method="POST" class="add-coin-form">
+            <input
+              type="text"
+              name="simbolo"
+              class="input-text"
+              placeholder="Ex: SOL, ADA"
+              required
+              autocomplete="off"
+            />
+            <button type="submit" class="btn btn-secondary" style="width: auto">
+              <i class="fa-solid fa-plus"></i>
+            </button>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <i class="fa-solid fa-layer-group"></i> Gerenciar Telas
+          </div>
+
+          {{ flash_messages(['playlist_success', 'playlist_error']) }}
+
+          <form action="/salvar_playlist" method="POST">
+            {% for page in pages %}
+            <div class="page-row">
+              <div class="switch-wrapper">
+                <label class="toggle-switch">
+                  <input
+                    type="checkbox"
+                    name="enable_{{ page.id }}"
+                    {%
+                    if
+                    page.enabled
+                    %}checked{%
+                    endif
+                    %}
+                  />
+                  <span class="slider"></span>
+                </label>
+                <span style="font-weight: 500">{{ page.nome }}</span>
+              </div>
+
+              <div class="time-input-group">
+                <i
+                  class="fa-regular fa-clock"
+                  style="font-size: 0.8rem; color: #64748b"
+                ></i>
+                <input
+                  type="number"
+                  name="time_{{ page.id }}"
+                  value="{{ page.tempo }}"
+                  min="5"
+                />
+                <span>s</span>
+              </div>
+            </div>
+            {% endfor %}
+            <button
+              type="submit"
+              class="btn btn-primary"
+              style="margin-top: 15px"
+            >
+              <i class="fa-solid fa-save"></i> Salvar Alterações
+            </button>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <i class="fa-solid fa-image"></i> Gerenciar Galeria
+          </div>
+
+          {{ flash_messages(['gallery_success', 'gallery_error']) }}
+
+          <form
+            action="/upload_gif"
+            method="POST"
+            enctype="multipart/form-data"
+            style="display: flex; gap: 10px; align-items: center"
+          >
+            <input
+              type="file"
+              name="file"
+              accept=".gif"
+              style="color: var(--text-secondary); font-size: 0.9rem"
+              required
+            />
+            <button type="submit" class="btn btn-primary" style="width: auto">
+              <i class="fa-solid fa-cloud-arrow-up"></i> Enviar
+            </button>
+          </form>
+
+          <form
+            action="/download_gif"
+            method="POST"
+            style="
+              display: flex;
+              gap: 10px;
+              align-items: center;
+              margin-top: 10px;
+            "
+          >
+            <input
+              type="text"
+              name="url"
+              class="input-text"
+              placeholder="Ou cole a URL de um GIF..."
+              required
+            />
+            <input
+              type="text"
+              name="name"
+              class="input-text"
+              placeholder="Nome"
+              style="width: 30%"
+              required
+            />
+            <button type="submit" class="btn btn-secondary" style="width: auto">
+              <i class="fa-solid fa-cloud-arrow-down"></i>
+            </button>
+          </form>
+
+          {% if gifs %}
+          <div class="gif-gallery">
+            {% for gif in gifs %}
+            <div class="gif-card">
+              <img src="/pixelart/{{ gif }}" loading="lazy" />
+              <div class="gif-card-actions">
+                <a
+                  href="/delete_gif/{{ gif }}"
+                  style="color: var(--danger-color); text-decoration: none"
+                >
+                  <i class="fa-solid fa-trash"></i>
+                </a>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div
+            style="
+              margin-top: 15px;
+              color: var(--text-secondary);
+              font-size: 0.9rem;
+              text-align: center;
+            "
+          >
+            Nenhum GIF na galeria.
+          </div>
+          {% endif %}
+
+          <div
+            style="
+              margin-top: 20px;
+              border-top: 1px solid rgba(255, 255, 255, 0.1);
+              padding-top: 15px;
+            "
+          >
+            <div
+              style="
+                font-size: 0.9rem;
+                color: var(--text-secondary);
+                margin-bottom: 10px;
+              "
+            >
+              <i class="fa-solid fa-globe"></i> Buscar na Internet (Tenor)
+            </div>
+
+            <div
+              style="
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                margin-bottom: 15px;
+              "
+            >
+              <div style="display: flex; gap: 10px">
+                <input
+                  type="text"
+                  id="tenor-query"
+                  class="input-text"
+                  placeholder="Ex: Mario, Space, Cyberpunk..."
+                  onkeypress="handleEnter(event)"
+                />
+                <button
+                  class="btn btn-primary"
+                  style="width: auto"
+                  onclick="searchTenor()"
+                >
+                  <i class="fa-solid fa-magnifying-glass"></i>
+                </button>
+              </div>
+            </div>
+
+            <div
+              id="tenor-loading"
+              style="
+                display: none;
+                text-align: center;
+                color: var(--text-secondary);
+                margin: 10px;
+              "
+            >
+              <i class="fa-solid fa-circle-notch fa-spin"></i> Buscando...
+            </div>
+
+            <div class="gif-gallery" id="library-list"></div>
+
+            <div
+              id="load-more-container"
+              style="text-align: center; margin-top: 15px; display: none"
+            >
+              <button
+                class="btn btn-secondary"
+                onclick="loadMoreTenor()"
+                style="width: auto"
+              >
+                Carregar Mais <i class="fa-solid fa-chevron-down"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-sistema" class="tab-content">
+        <div class="card">
+          <div class="card-header">
+            <i class="fa-solid fa-server"></i> Status do Sistema
+          </div>
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-label"
+                ><i class="fa-solid fa-clock"></i> Uptime</span
+              >
+              <span class="info-value">{{ uptime }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label"
+                ><i class="fa-solid fa-temperature-half"></i> CPU Temp</span
+              >
+              <span
+                class="info-value"
+                style="color: {% if cpu_temp > 70 %}var(--danger-color){% elif cpu_temp > 55 %}var(--warning-color){% else %}var(--success-color){% endif %};"
+              >
+                {{ cpu_temp }}°C
+              </span>
+            </div>
+            <div class="info-item">
+              <span class="info-label"
+                ><i class="fa-solid fa-sd-card"></i> Disco ({{ disk_percent
+                }}%)</span
+              >
+              <div
+                class="disk-progress-track"
+                style="width: 100%; margin: 5px 0"
+              >
+                <div
+                  class="disk-progress-fill"
+                  style="width: {{ disk_percent }}%; background: {% if disk_percent > 90 %}var(--danger-color){% elif disk_percent > 75 %}var(--warning-color){% else %}var(--success-color){% endif %};"
+                ></div>
+              </div>
+              <span style="font-size: 0.8rem; color: var(--text-secondary)">
+                {{ disk_free }}GB livres
+              </span>
+            </div>
+            <div class="info-item">
+              <span class="info-label"
+                ><i class="fa-solid fa-memory"></i> RAM ({{ ram_percent
+                }}%)</span
+              >
+              <div
+                class="disk-progress-track"
+                style="width: 100%; margin: 5px 0"
+              >
+                <div
+                  class="disk-progress-fill"
+                  style="width: {{ ram_percent }}%; background: {% if ram_percent > 85 %}var(--danger-color){% elif ram_percent > 60 %}var(--warning-color){% else %}var(--accent-color){% endif %};"
+                ></div>
+              </div>
+              <span style="font-size: 0.8rem; color: var(--text-secondary)">
+                {{ ram_total }}MB Total
+              </span>
+            </div>
+            <div class="info-item">
+              <span class="info-label"
+                ><i class="fa-solid fa-gauge-high"></i> CPU Load</span
+              >
+              <span class="info-value">{{ load_1m }}</span>
+              <span
+                style="
+                  font-size: 0.7rem;
+                  display: block;
+                  color: var(--text-secondary);
+                "
+                >Média 1 min</span
+              >
+            </div>
+            <div class="info-item">
+              <span class="info-label"
+                ><i class="fa-solid fa-wifi"></i> Wi-Fi</span
+              >
+              <span
+                class="info-value"
+                style="color: {% if wifi_percent > 70 %}var(--success-color){% elif wifi_percent > 40 %}var(--warning-color){% else %}var(--danger-color){% endif %};"
+              >
+                {{ wifi_percent }}%
+              </span>
+              <span
+                style="
+                  font-size: 0.7rem;
+                  display: block;
+                  color: var(--text-secondary);
+                "
+                >Sinal</span
+              >
+            </div>
+            <div class="info-item">
+              <span class="info-label"
+                ><i class="fa-solid fa-network-wired"></i> IP Local</span
+              >
+              <span class="info-value" style="font-size: 0.9rem"
+                >{{ local_ip }}</span
+              >
+              <span
+                style="
+                  font-size: 0.7rem;
+                  display: block;
+                  color: var(--text-secondary);
+                "
+                >Rede</span
+              >
+            </div>
+            <div class="info-item">
+              <span class="info-label"
+                ><i class="fa-solid fa-stopwatch"></i> Ping</span
+              >
+              <span class="info-value" id="net-ping"
+                ><i
+                  class="fa-solid fa-circle-notch fa-spin"
+                  style="font-size: 0.8rem"
+                ></i
+              ></span>
+              <span
+                style="
+                  font-size: 0.7rem;
+                  display: block;
+                  color: var(--text-secondary);
+                "
+                >Latência</span
+              >
+            </div>
+            <div class="info-item">
+              <span class="info-label"
+                ><i class="fa-solid fa-download"></i> Download</span
+              >
+              <span class="info-value" id="net-download"
+                ><i
+                  class="fa-solid fa-circle-notch fa-spin"
+                  style="font-size: 0.8rem"
+                ></i
+              ></span>
+              <span
+                style="
+                  font-size: 0.7rem;
+                  display: block;
+                  color: var(--text-secondary);
+                "
+                >Estimado</span
+              >
+            </div>
+
+            <div
+              class="info-item"
+              style="
+                grid-column: 1 / -1;
+                height: 280px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+              "
+            >
+              <span class="info-label" style="margin-bottom: 10px"
+                ><i class="fa-solid fa-chart-pie"></i> Distribuição de Disco
+                (GB)</span
+              >
+              <div style="position: relative; width: 100%; height: 100%">
+                <canvas
+                  id="diskChart"
+                  data-free="{{ disk_free }}"
+                  data-total="{{ disk_total }}"
+                ></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <i class="fa-solid fa-wifi"></i> Configuração de Rede
+          </div>
+
+          {{ flash_messages(['wifi_success', 'wifi_error']) }}
+
+          <form
+            action="/salvar_wifi"
+            method="POST"
+            style="display: flex; flex-direction: column; gap: 10px"
+          >
+            <input
+              type="text"
+              name="ssid"
+              class="input-text"
+              placeholder="Nome da Rede (SSID)"
+              required
+            />
+            <input
+              type="password"
+              name="psk"
+              class="input-text"
+              placeholder="Senha do Wi-Fi"
+              required
+            />
+            <div style="display: flex; gap: 10px">
+              <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-save"></i> Salvar e Conectar
+              </button>
+              <a
+                href="/wifi_reset"
+                class="btn btn-secondary"
+                style="width: auto"
+                title="Forçar Reconexão"
+                ><i class="fa-solid fa-rotate"></i
+              ></a>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <i class="fa-solid fa-cube"></i> Configuração Klipper (Voron)
+          </div>
+
+          {{ flash_messages(['printer_success', 'printer_error']) }}
+
+          <form
+            action="/salvar_printer"
+            method="POST"
+            style="display: flex; flex-direction: column; gap: 10px"
+          >
+            <input
+              type="text"
+              name="printer_name"
+              class="input-text"
+              placeholder="Nome (Ex: VORON 2.4)"
+              value="{{ printer_name }}"
+            />
+            <input
+              type="text"
+              name="printer_ip"
+              class="input-text"
+              placeholder="IP da Impressora (Ex: 192.168.1.50)"
+              value="{{ printer_ip }}"
+              required
+            />
+            <button type="submit" class="btn btn-primary">
+              <i class="fa-solid fa-save"></i>
+            </button>
+          </form>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr; gap: 10px">
+          <a
+            href="#"
+            class="btn btn-secondary"
+            onclick="
+              openLogs();
+              return false;
+            "
+          >
+            <i class="fa-solid fa-terminal"></i> Ver Logs do Sistema
+          </a>
+        </div>
       </div>
 
       <footer
@@ -633,5 +690,38 @@
         &copy; 2026 BITDEV Monitor by Tauser. Todos os direitos reservados.
       </footer>
     </div>
+
+    <div id="logModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2><i class="fa-solid fa-terminal"></i> Logs do Sistema</h2>
+          <span class="close-modal" onclick="closeModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+          <pre id="log-output">Carregando...</pre>
+        </div>
+        <div class="modal-footer">
+          <button
+            class="btn btn-secondary"
+            onclick="fetchLogs()"
+            style="width: auto"
+          >
+            <i class="fa-solid fa-rotate"></i> Atualizar
+          </button>
+          <button
+            class="btn btn-primary"
+            onclick="closeModal()"
+            style="width: auto"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script
+      src="{{ url_for('static', filename='script.js') }}?v=2.0"
+      defer
+    ></script>
   </body>
 </html>

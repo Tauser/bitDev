@@ -7,10 +7,8 @@ import threading
 import config as cfg
 from rgbmatrix import graphics
 
-# --- CONFIGURAÇÃO ---
 JSON_PATH = os.path.join(cfg.BASE_DIR, 'moedas.json')
 
-# Estrutura de Dados Global
 dados = {
     'temp': '0',
     'brilho': 70,
@@ -22,7 +20,8 @@ dados = {
     'moedas_ativas': ['BTC', 'ETH', 'SOL'],
     'cidade': 'Sao_Paulo',
     'msg_custom': '',
-    'status': {'btc': False, 'stocks': False, 'printer': False}, # Flags de controle
+    'notifications': [],
+    'status': {'btc': False, 'stocks': False, 'printer': False},
     'stocks': {'ibov': 0, 'ibov_var': 0, 'sp500': 0, 'sp500_var': 0, 'nasdaq': 0, 'nasdaq_var': 0},
     'printer': {'state': 'OFF', 'progress': 0, 'ext_actual': 0, 'ext_target': 0, 'bed_actual': 0, 'bed_target': 0, 'z_height': 0, 'fan_speed': 0, 'print_duration': 0, 'total_duration': 0, 'filename': '', 'homed_axes': '', 'print_speed': 0, 'message': '', 'is_moving': False, 'sensors': {}, 'qgl_applied': False, 'position': [0,0,0]},
     'printer_name': 'VORON 2.4'
@@ -44,7 +43,6 @@ def carregar_config():
     alterou_moedas = False
     config = None
     
-    # Tenta carregar o oficial, se falhar tenta o backup
     try:
         if os.path.exists(JSON_PATH):
             with open(JSON_PATH, 'r') as f:
@@ -68,7 +66,6 @@ def carregar_config():
                 raw_list = config.get('secundarias', [])
                 if isinstance(raw_list, list):
                     clean_list = []
-                    # Garante que BTC não entre na lista de secundárias (ele é separado)
                     for item in raw_list:
                         clean = item.replace('USDT', '').replace('usdt', '')
                         if clean != 'BTC': 
@@ -84,7 +81,6 @@ def carregar_config():
 def check_internet():
     """Verifica se há conexão real com a internet (Google)"""
     try:
-        # Tenta um endpoint leve do Google para confirmar a rede
         requests.get("http://clients3.google.com/generate_204", timeout=2)
         return True
     except:
@@ -95,7 +91,6 @@ def get_local_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.settimeout(0.1)
-        # Não conecta realmente, apenas determina a rota
         s.connect(('8.8.8.8', 1))
         IP = s.getsockname()[0]
         s.close()
@@ -106,7 +101,6 @@ def get_local_ip():
 def save_debug_info():
     """Salva status na partição de boot para leitura no Windows"""
     try:
-        # Verifica se a pasta /boot existe (Raspberry Pi)
         if os.path.exists("/boot"):
             path = "/boot/bitdev_status.txt"
             ip = get_local_ip()
@@ -120,7 +114,6 @@ def save_debug_info():
                 f.write(f"Wi-Fi: {wifi_status}\n")
                 f.write(f"Internet: {internet}\n")
                 
-                # Lista arquivos na raiz do boot para diagnóstico
                 try:
                     files = os.listdir("/boot")
                     if "network-config" in files: f.write("Aviso: 'network-config' detectado (pode ser ignorado).\n")
@@ -128,37 +121,47 @@ def save_debug_info():
                 except: pass
                 
                 f.flush()
-                os.fsync(f.fileno()) # Garante gravação física no SD para evitar corrupção
+                os.fsync(f.fileno())
     except Exception as e:
         print(f"Erro ao salvar debug: {e}")
 
-# --- AQUI ESTÁ A MÁGICA: FUNÇÕES SEPARADAS ---
+def add_notification(msg, color=None, duration=15):
+    """Adiciona uma notificação temporária ao rodapé"""
+    if color is None: color = cfg.C_WHITE
+    expire = time.time() + duration
+    dados['notifications'].append({'msg': msg, 'expires': expire, 'color': color})
+
+def get_active_notification():
+    """Retorna a notificação mais recente e limpa as expiradas"""
+    now = time.time()
+    dados['notifications'] = [n for n in dados['notifications'] if n['expires'] > now]
+    if dados['notifications']:
+        return dados['notifications'][-1]
+    return None
 
 def fetch_btc_only():
     """Busca APENAS o Bitcoin (Muito Rápido)"""
     global dados
     try:
         url = "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"
-        r = requests.get(url, timeout=5).json() # Aumentado para 5s para evitar falhas no boot
+        r = requests.get(url, timeout=5).json()
         
         price = float(r['lastPrice'])
         change = float(r['priceChangePercent'])
         
         dados['bitcoin']['usd'] = price
         dados['bitcoin']['change'] = change
-        # Usa o dólar em cache para calcular o real instantaneamente
         dados['bitcoin']['brl'] = price * dados['usdtbrl']
         dados['conexao'] = True
         dados['status']['btc'] = True
     except Exception as e:
-        print(f"Erro ao buscar BTC: {e}") # Ajuda a ver no log se falhar
+        print(f"Erro ao buscar BTC: {e}")
         dados['status']['btc'] = False
         
-        # Se falhou o BTC, verifica se é a internet inteira que caiu
         if check_internet():
-            dados['conexao'] = True # Internet OK, erro só na API (mantém cache)
+            dados['conexao'] = True
         else:
-            dados['conexao'] = False # Realmente sem internet
+            dados['conexao'] = False
 
 def fetch_secondary_coins():
     """Busca as outras moedas (Mais Lento)"""
@@ -209,7 +212,6 @@ def fetch_stocks():
     global dados
     headers = {'User-Agent': 'Mozilla/5.0'}
     
-    # Helper interno para buscar ticker
     def get_ticker(symbol, key_price, key_var):
         try:
             url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=1d"
@@ -221,7 +223,6 @@ def fetch_stocks():
             dados['stocks'][key_var] = ((price - prev) / prev) * 100
             dados['status']['stocks'] = True
         except: pass
-        # Nota: Se falhar um ticker, não marca stocks como False total, tenta os outros
 
     get_ticker('^BVSP', 'ibov', 'ibov_var')   # Ibovespa
     get_ticker('^GSPC', 'sp500', 'sp500_var') # S&P 500
@@ -237,19 +238,31 @@ def fetch_printer_data():
         return
 
     try:
-        # Endpoint padrão do Moonraker para buscar status de objetos
-        # Adicionando sensores extras e QGL
         sensor_query = "&quad_gantry_level&temperature_sensor CHAMBER&temperature_sensor EBB_SB2009&temperature_sensor OCTOPUS_PRO&temperature_sensor RASPIBERRY_4"
         url = f"http://{ip}/printer/objects/query?print_stats&display_status&extruder&heater_bed&fan&toolhead&gcode_move{sensor_query}"
         r = requests.get(url, timeout=2).json()
         
         res = r['result']['status']
         
-        # Usa .get() para evitar erro se display_status não estiver configurado no Klipper
         disp = res.get('display_status', {})
         
         p_data = dados['printer']
-        p_data['state']      = res['print_stats']['state'] # printing, paused, complete, error, standby
+        
+        current_state = res['print_stats']['state']
+        last_state = p_data.get('_last_state', '')
+        
+        if last_state and current_state != last_state:
+            if current_state == 'printing' and last_state != 'paused':
+                fname = res['print_stats']['filename']
+                add_notification(f"Imprimindo: {fname}", cfg.C_TEAL, 10)
+            elif current_state == 'complete':
+                add_notification("Impressao Finalizada!", cfg.C_GREEN, 60)
+            elif current_state == 'error':
+                add_notification("Erro na Impressora!", cfg.C_RED, 60)
+        
+        p_data['_last_state'] = current_state
+
+        p_data['state']      = res['print_stats']['state']
         p_data['progress']   = float(disp.get('progress', 0)) * 100
         p_data['filename']   = res['print_stats']['filename']
         p_data['message']    = str(disp.get('message') or '')
@@ -261,34 +274,28 @@ def fetch_printer_data():
         p_data['bed_actual'] = res['heater_bed']['temperature']
         p_data['bed_target'] = res['heater_bed']['target']
         
-        # Power e Factors
         p_data['ext_power']  = int(res['extruder'].get('power', 0) * 100)
         p_data['bed_power']  = int(res['heater_bed'].get('power', 0) * 100)
         p_data['speed_factor'] = int(res.get('gcode_move', {}).get('speed_factor', 1) * 100)
         p_data['flow_factor'] = int(res.get('gcode_move', {}).get('extrude_factor', 1) * 100)
         
-        # Novos dados
         p_data['fan_speed']  = int(res.get('fan', {}).get('speed', 0) * 100)
         p_data['z_height']   = res.get('toolhead', {}).get('position', [0,0,0])[2]
         p_data['homed_axes'] = res.get('toolhead', {}).get('homed_axes', '')
-        p_data['print_speed'] = int(res.get('gcode_move', {}).get('speed', 0)) # mm/s
+        p_data['print_speed'] = int(res.get('gcode_move', {}).get('speed', 0))
         p_data['position']   = res.get('toolhead', {}).get('position', [0,0,0])
         p_data['qgl_applied'] = res.get('quad_gantry_level', {}).get('applied', False)
 
-        # Coleta Sensores Extras
         p_data['sensors'] = {}
         for key, val in res.items():
             if key.startswith('temperature_sensor'):
                 name = key.replace('temperature_sensor ', '')
                 p_data['sensors'][name] = val.get('temperature', 0)
         
-        # --- DETECÇÃO DE MOVIMENTO ---
-        # Pega posição XYZ atual
         raw_pos = res.get('toolhead', {}).get('position', [0,0,0])
-        current_xyz = raw_pos[:3] # Ignora extrusora (E)
+        current_xyz = raw_pos[:3]
         last_xyz = p_data.get('_last_xyz', current_xyz)
         
-        # Se houve mudança maior que 0.5mm em qualquer eixo, está movendo
         p_data['is_moving'] = any(abs(c - l) > 0.5 for c, l in zip(current_xyz, last_xyz))
         p_data['_last_xyz'] = current_xyz
         
@@ -301,43 +308,33 @@ def fetch_printer_data():
 def loop_atualizacao(matrix):
     print(">> Iniciando Coleta de Dados Prioritária...")
     
-    # Executa uma vez tudo no início
     carregar_config()
     
-    # --- OTIMIZAÇÃO DE BOOT ---
-    # 1. Busca BTC primeiro para liberar o Dashboard rápido
     fetch_btc_only()
     
-    # 2. Busca o resto em paralelo/sequência rápida
-    fetch_extras() # Dólar
+    fetch_extras()
     threading.Thread(target=lambda: (ler_temperatura(), fetch_stocks(), fetch_printer_data(), fetch_secondary_coins(), save_debug_info())).start()
     
-    # Contadores para as tarefas lentas
     timer_secundarias = 0
     timer_lento = 0
     
     while True:
-        # 1. PRIORIDADE TOTAL: BTC (A cada 2 segundos)
         time.sleep(2)
         
-        # Se a lista de moedas mudou, força atualização imediata das secundárias
         if carregar_config():
             fetch_secondary_coins()
-            timer_secundarias = 0 # Reseta o timer para não buscar de novo em seguida
+            timer_secundarias = 0
             
         fetch_btc_only()
-        fetch_printer_data() # Atualiza impressora rápido (para ver temperatura subindo)
+        fetch_printer_data()
         
-        # Incrementa os contadores (já que passou 2s)
         timer_secundarias += 2
         timer_lento += 2
         
-        # 2. PRIORIDADE MÉDIA: Altcoins (A cada 10 segundos)
         if timer_secundarias >= 10:
             fetch_secondary_coins()
             timer_secundarias = 0
             
-        # 3. PRIORIDADE BAIXA: Config/Clima (A cada 60 segundos)
         if timer_lento >= 60:
             fetch_extras()
             ler_temperatura()
