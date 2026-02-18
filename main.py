@@ -46,7 +46,7 @@ ultimo_checkpoint = time.time()
 def obter_playlist_ativa():
     """Lê o JSON e retorna apenas as páginas ativadas"""
     try:
-        path = os.path.join(cfg.BASE_DIR, 'moedas.json')
+        path = os.path.join(cfg.BASE_DIR, 'user_config.json')
         if os.path.exists(path):
             with open(path, 'r') as f:
                 d = json.load(f)

@@ -31,7 +31,7 @@ sudo make install-python PYTHON=$(which python3)
 cd - > /dev/null
 
 echo ">> [4/5] Configurando inicialização automática..."
-USER_NAME=$(whoami)
+USER_NAME=${SUDO_USER:-$(whoami)}
 PROJECT_DIR=$(pwd)
 CHOWN_BIN=$(which chown)
 SERVICE_FILE="/etc/systemd/system/crypto.service"

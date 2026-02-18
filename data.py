@@ -7,7 +7,7 @@ import threading
 import config as cfg
 from rgbmatrix import graphics
 
-JSON_PATH = os.path.join(cfg.BASE_DIR, 'moedas.json')
+JSON_PATH = os.path.join(cfg.BASE_DIR, 'user_config.json')
 
 dados = {
     'temp': '0',

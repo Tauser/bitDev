@@ -12,7 +12,14 @@ import socket
 
 app = Flask(__name__)
 app.secret_key = 'chave_secreta_crypto_monitor'
-CONFIG_PATH = os.path.join(cfg.BASE_DIR, 'moedas.json')
+
+# Migracao automatica: Se existir moedas.json e nao existir user_config.json, renomeia
+OLD_CONFIG = os.path.join(cfg.BASE_DIR, 'moedas.json')
+CONFIG_PATH = os.path.join(cfg.BASE_DIR, 'user_config.json')
+
+if os.path.exists(OLD_CONFIG) and not os.path.exists(CONFIG_PATH):
+    os.rename(OLD_CONFIG, CONFIG_PATH)
+
 PIXELART_FOLDER = os.path.join(cfg.BASE_DIR, 'images/pixelart')
 
 DEFAULT_LIBRARY = [
