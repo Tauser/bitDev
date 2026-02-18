@@ -659,6 +659,7 @@
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr; gap: 10px">
+          {% if update_available %}
           <a
             href="/atualizar"
             class="btn btn-primary"
@@ -670,6 +671,15 @@
           >
             <i class="fa-solid fa-cloud-arrow-down"></i> Atualizar Versão
           </a>
+          {% else %}
+          <button
+            class="btn btn-success"
+            disabled
+            style="opacity: 0.8; cursor: default"
+          >
+            <i class="fa-solid fa-check"></i> Sistema Atualizado
+          </button>
+          {% endif %}
 
           <a
             href="#"
