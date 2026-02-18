@@ -54,6 +54,14 @@ def ler_config():
             ]
         }
 
+def fix_file_ownership(filepath):
+    """Devolve a posse do arquivo para o usuario comum (ex: pi)"""
+    try:
+        stat_info = os.stat(cfg.BASE_DIR)
+        os.chown(filepath, stat_info.st_uid, stat_info.st_gid)
+        os.chmod(filepath, 0o666)
+    except: pass
+
 def salvar_config(config):
     tmp_path = CONFIG_PATH + ".tmp"
     bak_path = CONFIG_PATH + ".bak"
@@ -64,6 +72,7 @@ def salvar_config(config):
             os.fsync(f.fileno())
         if os.path.exists(CONFIG_PATH): shutil.copy2(CONFIG_PATH, bak_path)
         os.replace(tmp_path, CONFIG_PATH)
+        fix_file_ownership(CONFIG_PATH)
     except Exception as e:
         print(f"Erro crítico ao salvar config: {e}")
 
@@ -362,6 +371,7 @@ def upload_gif():
         if not os.path.exists(PIXELART_FOLDER):
             os.makedirs(PIXELART_FOLDER)
         file.save(os.path.join(PIXELART_FOLDER, filename))
+        fix_file_ownership(os.path.join(PIXELART_FOLDER, filename))
         flash(f'GIF "{filename}" enviado com sucesso!', 'gallery_success')
     else:
         flash('Apenas arquivos .gif são permitidos.', 'gallery_error')
@@ -424,6 +434,7 @@ def download_gif():
             filename = secure_filename(f"{name}.gif")
             with open(os.path.join(PIXELART_FOLDER, filename), 'wb') as f:
                 f.write(r.content)
+            fix_file_ownership(os.path.join(PIXELART_FOLDER, filename))
             flash(f'GIF "{filename}" baixado com sucesso!', 'gallery_success')
         else:
             flash('Erro ao baixar imagem (Status code inválido).', 'gallery_error')

@@ -33,6 +33,7 @@ cd - > /dev/null
 echo ">> [4/5] Configurando inicialização automática..."
 USER_NAME=$(whoami)
 PROJECT_DIR=$(pwd)
+CHOWN_BIN=$(which chown)
 SERVICE_FILE="/etc/systemd/system/crypto.service"
 
 echo "Configurando para usuário: $USER_NAME na pasta: $PROJECT_DIR"
@@ -51,6 +52,7 @@ ExecStart=/usr/bin/python3 $PROJECT_DIR/main.py
 Restart=always
 RestartSec=10
 WatchdogSec=60
+ExecStartPre=$CHOWN_BIN -R $USER_NAME:$USER_NAME $PROJECT_DIR
 ExecStartPre=/bin/sleep 10
 Environment=PYTHONUNBUFFERED=1
 
