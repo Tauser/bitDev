@@ -36,6 +36,37 @@ PROJECT_DIR=$(pwd)
 CHOWN_BIN=$(which chown)
 SERVICE_FILE="/etc/systemd/system/crypto.service"
 
+# Cria arquivo de config se não existir (para novas instalações)
+CONFIG_FILE="$PROJECT_DIR/user_config.json"
+OLD_CONFIG_FILE="$PROJECT_DIR/moedas.json"
+
+if [ ! -f "$CONFIG_FILE" ]; then
+    if [ -f "$OLD_CONFIG_FILE" ]; then
+        echo ">> Migrando configuração antiga..."
+        mv "$OLD_CONFIG_FILE" "$CONFIG_FILE"
+    else
+        echo ">> Criando configuração padrão..."
+        cat > "$CONFIG_FILE" <<EOF
+{
+  "secundarias": ["ETHUSDT", "BTCUSDT", "SOLUSDT"],
+  "brilho": 50,
+  "modo_noturno": false,
+  "msg_custom": "",
+  "cidade": "Sao_Paulo",
+  "printer_ip": "",
+  "printer_name": "VORON 2.4",
+  "pages": [
+    {"id": "DASHBOARD", "nome": "Dashboard Cripto", "enabled": true, "tempo": 30},
+    {"id": "BOLSA",     "nome": "Bolsa & Mercado",  "enabled": true, "tempo": 15},
+    {"id": "IMPRESSORA", "nome": "Impressora 3D",    "enabled": true, "tempo": 15},
+    {"id": "GALERIA",   "nome": "Galeria PixelArt", "enabled": true, "tempo": 10}
+  ]
+EOF
+    fi
+    # Garante permissão correta para o usuário
+    sudo $CHOWN_BIN $USER_NAME:$USER_NAME "$CONFIG_FILE"
+fi
+
 echo "Configurando para usuário: $USER_NAME na pasta: $PROJECT_DIR"
 
 sudo bash -c "cat > $SERVICE_FILE" <<EOF
