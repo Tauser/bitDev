@@ -197,15 +197,38 @@ def fetch_extras():
     except: pass
 
 def ler_temperatura():
-    """Clima da Cidade"""
+    """Clima da Cidade (Via Open-Meteo - Mais rápido)"""
     global dados
     cidade = dados.get('cidade', 'Sao_Paulo')
-    try:
-        url = f"https://wttr.in/{cidade}?format=%t"
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            dados['temp'] = r.text.strip().replace("+", "").replace("°C", "").replace("C", "")
-    except: pass
+    
+    # 1. Resolve Latitude/Longitude se necessário (Cache na memória)
+    # Isso evita chamar a API de geocoding toda vez, tornando muito rápido
+    if dados.get('_cached_city') != cidade or 'lat' not in dados:
+        try:
+            cidade_query = cidade.replace('_', ' ') # Troca Sao_Paulo por Sao Paulo
+            geo_url = "https://geocoding-api.open-meteo.com/v1/search"
+            params = {'name': cidade_query, 'count': 1, 'language': 'pt', 'format': 'json'}
+            
+            r = requests.get(geo_url, params=params, timeout=3)
+            geo_data = r.json()
+            
+            if geo_data.get('results'):
+                dados['lat'] = geo_data['results'][0]['latitude']
+                dados['lon'] = geo_data['results'][0]['longitude']
+                dados['_cached_city'] = cidade
+        except: pass
+
+    # 2. Busca Temperatura usando Lat/Lon
+    if 'lat' in dados:
+        try:
+            url = "https://api.open-meteo.com/v1/forecast"
+            params = {'latitude': dados['lat'], 'longitude': dados['lon'], 'current': 'temperature_2m'}
+            r = requests.get(url, params=params, timeout=3)
+            weather_data = r.json()
+            
+            temp = weather_data['current']['temperature_2m']
+            dados['temp'] = str(int(round(temp)))
+        except: pass
 
 def fetch_stocks():
     """Busca IBOVESPA e S&P 500 (Yahoo Finance)"""
@@ -238,11 +261,11 @@ def fetch_printer_data():
         return
 
     try:
-        sensor_query = "&quad_gantry_level&temperature_sensor CHAMBER&temperature_sensor EBB_SB2009&temperature_sensor OCTOPUS_PRO&temperature_sensor RASPIBERRY_4"
-        url = f"http://{ip}/printer/objects/query?print_stats&display_status&extruder&heater_bed&fan&toolhead&gcode_move{sensor_query}"
-        r = requests.get(url, timeout=2).json()
-        
-        res = r['result']['status']
+        # URL simplificada para garantir compatibilidade com qualquer Klipper
+        url = f"http://{ip}/printer/objects/query?print_stats&display_status&extruder&heater_bed&fan&toolhead&gcode_move&quad_gantry_level"
+        r = requests.get(url, timeout=2)
+        r.raise_for_status() # Garante que erros 404/500 sejam capturados
+        res = r.json()['result']['status']
         
         disp = res.get('display_status', {})
         
@@ -269,20 +292,25 @@ def fetch_printer_data():
         p_data['print_duration'] = res['print_stats'].get('print_duration', 0)
         p_data['total_duration'] = res['print_stats'].get('total_duration', 0)
         
+        # Camadas (Layer)
+        info = res['print_stats'].get('info', {})
+        p_data['layer'] = int(info.get('current_layer') or 0)
+        p_data['total_layers'] = int(info.get('total_layer') or 0)
+        
         p_data['ext_actual'] = res['extruder']['temperature']
         p_data['ext_target'] = res['extruder']['target']
         p_data['bed_actual'] = res['heater_bed']['temperature']
         p_data['bed_target'] = res['heater_bed']['target']
         
-        p_data['ext_power']  = int(res['extruder'].get('power', 0) * 100)
-        p_data['bed_power']  = int(res['heater_bed'].get('power', 0) * 100)
-        p_data['speed_factor'] = int(res.get('gcode_move', {}).get('speed_factor', 1) * 100)
-        p_data['flow_factor'] = int(res.get('gcode_move', {}).get('extrude_factor', 1) * 100)
+        p_data['ext_power']  = int((res['extruder'].get('power') or 0) * 100)
+        p_data['bed_power']  = int((res['heater_bed'].get('power') or 0) * 100)
+        p_data['speed_factor'] = int((res.get('gcode_move', {}).get('speed_factor') or 1) * 100)
+        p_data['flow_factor'] = int((res.get('gcode_move', {}).get('extrude_factor') or 1) * 100)
         
-        p_data['fan_speed']  = int(res.get('fan', {}).get('speed', 0) * 100)
-        p_data['z_height']   = res.get('toolhead', {}).get('position', [0,0,0])[2]
-        p_data['homed_axes'] = res.get('toolhead', {}).get('homed_axes', '')
-        p_data['print_speed'] = int(res.get('gcode_move', {}).get('speed', 0))
+        p_data['fan_speed']  = int((res.get('fan', {}).get('speed') or 0) * 100)
+        p_data['z_height']   = (res.get('toolhead', {}) or {}).get('position', [0,0,0])[2]
+        p_data['homed_axes'] = (res.get('toolhead', {}) or {}).get('homed_axes', '')
+        p_data['print_speed'] = int(res.get('gcode_move', {}).get('speed') or 0)
         p_data['position']   = res.get('toolhead', {}).get('position', [0,0,0])
         p_data['qgl_applied'] = res.get('quad_gantry_level', {}).get('applied', False)
 
@@ -301,7 +329,8 @@ def fetch_printer_data():
         
         dados['status']['printer'] = True
         
-    except: 
+    except Exception as e:
+        print(f"Erro Klipper: {e}") # Mostra o erro real no log para facilitar debug
         dados['printer']['state'] = 'OFFLINE'
         dados['status']['printer'] = False
 
