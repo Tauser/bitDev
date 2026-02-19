@@ -23,9 +23,13 @@ dados = {
     'notifications': [],
     'status': {'btc': False, 'stocks': False, 'printer': False},
     'stocks': {'ibov': 0, 'ibov_var': 0, 'sp500': 0, 'sp500_var': 0, 'nasdaq': 0, 'nasdaq_var': 0},
-    'printer': {'state': 'OFF', 'progress': 0, 'ext_actual': 0, 'ext_target': 0, 'bed_actual': 0, 'bed_target': 0, 'z_height': 0, 'fan_speed': 0, 'print_duration': 0, 'total_duration': 0, 'filename': '', 'homed_axes': '', 'print_speed': 0, 'message': '', 'is_moving': False, 'sensors': {}, 'qgl_applied': False, 'position': [0,0,0]},
+    'printer': {'state': 'OFF', 'progress': 0, 'ext_actual': 0, 'ext_target': 0, 'bed_actual': 0, 'bed_target': 0, 'z_height': 0, 'fan_speed': 0, 'print_duration': 0, 'total_duration': 0, 'filename': '', 'homed_axes': '', 'print_speed': 0, 'message': '', 'is_moving': False, 'sensors': {}, 'qgl_applied': False, 'position': [0,0,0], 'stats': {'total_time': 0, 'total_filament': 0, 'total_jobs': 0}},
     'printer_name': 'VORON 2.4'
 }
+
+# Variaveis de controle de conexao da impressora
+_printer_cached_url = None
+_printer_fail_count = 0
 
 def get_color(symbol):
     sym = symbol.upper()
@@ -253,30 +257,81 @@ def fetch_stocks():
 
 def fetch_printer_data():
     """Busca dados do Klipper/Moonraker"""
-    global dados
-    ip = dados.get('printer_ip')
-    if not ip: 
+    global dados, _printer_cached_url, _printer_fail_count
+    raw_ip = dados.get('printer_ip', '').strip()
+    
+    if not raw_ip: 
         dados['printer']['state'] = 'OFFLINE'
         dados['status']['printer'] = False
         return
 
+    # Limpeza do IP (remove http:// se usuario colocou)
+    ip = raw_ip.replace("http://", "").replace("https://", "").rstrip("/")
+    
+    # Lista de candidatos (Prioriza a ultima URL que funcionou)
+    candidates = []
+    if _printer_cached_url and ip in _printer_cached_url:
+        candidates.append(_printer_cached_url)
+    
+    defaults = [f"http://{ip}", f"http://{ip}:7125"]
+    if ":" in ip: defaults = [f"http://{ip}"]
+    
+    for u in defaults:
+        if u not in candidates: candidates.append(u)
+
+    success = False
+    r_json = None
+    
+    for base_url in candidates:
+        try:
+            # Query objects
+            url = f"{base_url}/printer/objects/query?print_stats&display_status&extruder&heater_bed&fan&toolhead&gcode_move&quad_gantry_level"
+            r = requests.get(url, timeout=2)
+            if r.status_code == 200:
+                try:
+                    # Valida se é JSON válido do Moonraker antes de aceitar
+                    val = r.json()
+                    if 'result' in val:
+                        r_json = val
+                        success = True
+                        _printer_cached_url = base_url # Memoriza a porta certa
+                        _printer_fail_count = 0        # Zera contador de erro
+                        break
+                except: pass
+        except: continue
+    
+    if not success or not r_json:
+        _printer_fail_count += 1
+        # Se falhou, limpa o cache para forçar redescobrir a porta na proxima
+        if _printer_cached_url: _printer_cached_url = None
+            
+        # Só marca OFFLINE se falhar 5 vezes seguidas (aprox 10 segundos)
+        if _printer_fail_count >= 5:
+            dados['printer']['state'] = 'OFFLINE'
+            dados['status']['printer'] = False
+        return
+
     try:
-        # URL simplificada para garantir compatibilidade com qualquer Klipper
-        url = f"http://{ip}/printer/objects/query?print_stats&display_status&extruder&heater_bed&fan&toolhead&gcode_move&quad_gantry_level"
-        r = requests.get(url, timeout=2)
-        r.raise_for_status() # Garante que erros 404/500 sejam capturados
-        res = r.json()['result']['status']
+        res = r_json.get('result', {}).get('status', {})
         
-        disp = res.get('display_status', {})
+        # Garante leitura segura (mesmo se faltar sensor)
+        p_stats = res.get('print_stats', {})
+        disp    = res.get('display_status', {})
+        ext     = res.get('extruder', {})
+        bed     = res.get('heater_bed', {})
+        fan     = res.get('fan', {})
+        tool    = res.get('toolhead', {})
+        move    = res.get('gcode_move', {})
         
         p_data = dados['printer']
         
-        current_state = res['print_stats']['state']
+        # Detecta mudança de estado para notificação
+        current_state = p_stats.get('state', 'error')
         last_state = p_data.get('_last_state', '')
         
         if last_state and current_state != last_state:
             if current_state == 'printing' and last_state != 'paused':
-                fname = res['print_stats']['filename']
+                fname = p_stats.get('filename', '')
                 add_notification(f"Imprimindo: {fname}", cfg.C_TEAL, 10)
             elif current_state == 'complete':
                 add_notification("Impressao Finalizada!", cfg.C_GREEN, 60)
@@ -285,33 +340,32 @@ def fetch_printer_data():
         
         p_data['_last_state'] = current_state
 
-        p_data['state']      = res['print_stats']['state']
+        p_data['state']      = current_state
         p_data['progress']   = float(disp.get('progress', 0)) * 100
-        p_data['filename']   = res['print_stats']['filename']
+        p_data['filename']   = p_stats.get('filename', '')
         p_data['message']    = str(disp.get('message') or '')
-        p_data['print_duration'] = res['print_stats'].get('print_duration', 0)
-        p_data['total_duration'] = res['print_stats'].get('total_duration', 0)
+        p_data['print_duration'] = p_stats.get('print_duration', 0)
+        p_data['total_duration'] = p_stats.get('total_duration', 0)
         
-        # Camadas (Layer)
-        info = res['print_stats'].get('info', {})
+        info = p_stats.get('info', {})
         p_data['layer'] = int(info.get('current_layer') or 0)
         p_data['total_layers'] = int(info.get('total_layer') or 0)
         
-        p_data['ext_actual'] = res['extruder']['temperature']
-        p_data['ext_target'] = res['extruder']['target']
-        p_data['bed_actual'] = res['heater_bed']['temperature']
-        p_data['bed_target'] = res['heater_bed']['target']
+        p_data['ext_actual'] = ext.get('temperature', 0)
+        p_data['ext_target'] = ext.get('target', 0)
+        p_data['bed_actual'] = bed.get('temperature', 0)
+        p_data['bed_target'] = bed.get('target', 0)
         
-        p_data['ext_power']  = int((res['extruder'].get('power') or 0) * 100)
-        p_data['bed_power']  = int((res['heater_bed'].get('power') or 0) * 100)
-        p_data['speed_factor'] = int((res.get('gcode_move', {}).get('speed_factor') or 1) * 100)
-        p_data['flow_factor'] = int((res.get('gcode_move', {}).get('extrude_factor') or 1) * 100)
+        p_data['ext_power']  = int((ext.get('power') or 0) * 100)
+        p_data['bed_power']  = int((bed.get('power') or 0) * 100)
+        p_data['speed_factor'] = int((move.get('speed_factor') or 1) * 100)
+        p_data['flow_factor'] = int((move.get('extrude_factor') or 1) * 100)
         
-        p_data['fan_speed']  = int((res.get('fan', {}).get('speed') or 0) * 100)
-        p_data['z_height']   = (res.get('toolhead', {}) or {}).get('position', [0,0,0])[2]
-        p_data['homed_axes'] = (res.get('toolhead', {}) or {}).get('homed_axes', '')
-        p_data['print_speed'] = int(res.get('gcode_move', {}).get('speed') or 0)
-        p_data['position']   = res.get('toolhead', {}).get('position', [0,0,0])
+        p_data['fan_speed']  = int((fan.get('speed') or 0) * 100)
+        p_data['z_height']   = (tool.get('position') or [0,0,0])[2]
+        p_data['homed_axes'] = (tool.get('homed_axes') or '')
+        p_data['print_speed'] = int(move.get('speed') or 0)
+        p_data['position']   = tool.get('position', [0,0,0])
         p_data['qgl_applied'] = res.get('quad_gantry_level', {}).get('applied', False)
 
         p_data['sensors'] = {}
@@ -320,19 +374,31 @@ def fetch_printer_data():
                 name = key.replace('temperature_sensor ', '')
                 p_data['sensors'][name] = val.get('temperature', 0)
         
-        raw_pos = res.get('toolhead', {}).get('position', [0,0,0])
+        # Movimento
+        raw_pos = tool.get('position', [0,0,0])
         current_xyz = raw_pos[:3]
         last_xyz = p_data.get('_last_xyz', current_xyz)
         
         p_data['is_moving'] = any(abs(c - l) > 0.5 for c, l in zip(current_xyz, last_xyz))
         p_data['_last_xyz'] = current_xyz
         
+        # --- Busca Estatísticas de Histórico (Odômetro) ---
+        # Fazemos isso apenas se estiver conectado, para não travar o loop principal
+        try:
+            h_url = f"{base_url}/server/history/totals"
+            h_r = requests.get(h_url, timeout=1)
+            if h_r.status_code == 200:
+                totals = h_r.json().get('result', {}).get('job_totals', {})
+                p_data['stats']['total_time'] = totals.get('total_time', 0)
+                p_data['stats']['total_filament'] = totals.get('total_filament_used', 0)
+                p_data['stats']['total_jobs'] = totals.get('total_jobs', 0)
+        except: pass
+
         dados['status']['printer'] = True
         
     except Exception as e:
-        print(f"Erro Klipper: {e}") # Mostra o erro real no log para facilitar debug
-        dados['printer']['state'] = 'OFFLINE'
-        dados['status']['printer'] = False
+        print(f"Erro Parse Klipper: {e}")
+        # Nao marca offline imediatamente por erro de parse, espera o contador
 
 def loop_atualizacao(matrix):
     print(">> Iniciando Coleta de Dados Prioritária...")

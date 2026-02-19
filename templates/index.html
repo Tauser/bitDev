@@ -1,225 +1,135 @@
 <!doctype html>
-<html lang="pt-br">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BITDEV Monitor</title>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>BitDev Monitor</title>
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap"
       rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
     />
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
     />
-    <link
-      rel="stylesheet"
-      href="{{ url_for('static', filename='style.css') }}?v=2.0"
-    />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
   <body>
-    {% macro flash_messages(categories) %} {% with messages =
-    get_flashed_messages(with_categories=true, category_filter=categories) %} {%
-    if messages %}
-    <div class="flash-container" style="margin-bottom: 15px">
-      {% for category, message in messages %}
-      <div
-        class="flash-msg {% if 'error' in category %}flash-error{% else %}flash-success{% endif %}"
-      >
-        <i
-          class="fa-solid {% if 'error' in category %}fa-circle-exclamation{% else %}fa-circle-check{% endif %}"
-        ></i>
-        <span style="flex: 1">{{ message }}</span>
-        <i
-          class="fa-solid fa-xmark close-btn"
-          onclick="this.parentElement.remove()"
-        ></i>
-      </div>
-      {% endfor %}
-    </div>
-    {% endif %} {% endwith %} {% endmacro %}
-
     <div class="container">
       <header>
-        <h1><i class="fa-brands fa-bitcoin"></i> BITDEV</h1>
-        <div class="subtitle">Painel de Controle do Monitor</div>
+        <div class="logo"><i class="fa-brands fa-bitcoin"></i> BitDev</div>
+        <div class="header-actions">
+          <a
+            href="#"
+            class="btn-icon danger"
+            onclick="confirmShutdown('/desligar')"
+            title="Desligar"
+            ><i class="fa-solid fa-power-off"></i
+          ></a>
+          <a
+            href="#"
+            class="btn-icon warning"
+            onclick="confirmAction('/reiniciar', 'Reiniciar o painel?')"
+            title="Reiniciar"
+            ><i class="fa-solid fa-rotate-right"></i
+          ></a>
+          <a href="/alternar_noturno" class="btn-icon" title="Modo Noturno">
+            {% if noturno %}
+            <i class="fa-solid fa-sun"></i>
+            {% else %}
+            <i class="fa-solid fa-moon"></i>
+            {% endif %}
+          </a>
+        </div>
       </header>
 
-      <div class="global-actions">
-        <a
-          href="/reiniciar"
-          class="btn btn-restart"
-          style="
-            margin: 0;
-            border-color: var(--warning-color);
-            color: var(--warning-color);
-          "
-          onclick="return confirm('Reiniciar o serviço do painel?');"
-        >
-          <i class="fa-solid fa-rotate"></i> Reiniciar
-        </a>
-        <a
-          href="/desligar"
-          class="btn btn-restart"
-          style="
-            margin: 0;
-            border-color: var(--danger-color);
-            color: var(--danger-color);
-          "
-          onclick="
-            return confirm(
-              'Tem certeza? Isso desligará o Raspberry Pi completamente.',
-            );
-          "
-        >
-          <i class="fa-solid fa-power-off"></i> Desligar
-        </a>
-      </div>
-
-      {{ flash_messages(['success', 'error', 'info', 'warning']) }}
+      <div id="toast-container"></div>
 
       <div class="tabs">
-        <button class="tab-btn active" onclick="openTab(event, 'tab-controle')">
-          <i class="fa-solid fa-sliders"></i> Controle
+        <button class="tab-btn active" onclick="openTab(event, 'Dashboard')">
+          <i class="fa-solid fa-chart-line"></i> Dash
         </button>
-        <button class="tab-btn" onclick="openTab(event, 'tab-conteudo')">
-          <i class="fa-solid fa-layer-group"></i> Conteúdo
+        <button class="tab-btn" onclick="openTab(event, 'Config')">
+          <i class="fa-solid fa-gear"></i> Config
         </button>
-        <button class="tab-btn" onclick="openTab(event, 'tab-sistema')">
-          <i class="fa-solid fa-microchip"></i> Sistema
+        <button class="tab-btn" onclick="openTab(event, 'Galeria')">
+          <i class="fa-solid fa-image"></i> Galeria
+        </button>
+        <button class="tab-btn" onclick="openTab(event, 'Sistema')">
+          <i class="fa-solid fa-server"></i> Sistema
         </button>
       </div>
 
-      <div id="tab-controle" class="tab-content active">
-        {{ flash_messages(['control_success', 'control_error']) }}
-
+      <!-- DASHBOARD TAB -->
+      <div id="Dashboard" class="tab-content active" style="display: flex">
         <div class="card">
-          <div class="card-header">
-            <i class="fa-solid fa-sun"></i> Brilho da Tela
-          </div>
-          <form action="/brilho" method="POST">
-            <div
-              style="
-                display: flex;
-                justify-content: space-between;
-                margin-bottom: 10px;
-                font-size: 0.9rem;
-                color: var(--text-secondary);
-              "
-            >
-              <span>Escuro</span>
-              <span style="color: var(--accent-color); font-weight: bold"
-                >{{ brilho }}%</span
-              >
-              <span>Claro</span>
-            </div>
+          <h3>Brilho da Tela - {{ brilho }}%</h3>
+          <form onsubmit="submitForm(event, '/brilho')" class="range-form">
             <input
               type="range"
               name="nivel"
               min="10"
               max="100"
+              step="10"
               value="{{ brilho }}"
-              onchange="this.form.submit()"
+              list="brilho-markers"
+              onchange="submitForm(null, '/brilho', this.form)"
             />
+            <datalist id="brilho-markers">
+              <option value="10" label="10%"></option>
+              <option value="20" label="20%"></option>
+              <option value="30" label="30%"></option>
+              <option value="40" label="40%"></option>
+              <option value="50" label="50%"></option>
+              <option value="60" label="60%"></option>
+              <option value="70" label="70%"></option>
+              <option value="80" label="80%"></option>
+              <option value="90" label="90%"></option>
+              <option value="100" label="100%"></option>
+            </datalist>
           </form>
         </div>
 
         <div class="card">
-          <div class="card-header">
-            <i class="fa-solid fa-comment-dots"></i> Letreiro (Rodapé)
-          </div>
-          <form
-            action="/salvar_msg"
-            method="POST"
-            style="display: flex; gap: 10px"
-          >
-            <input
-              type="text"
-              name="msg"
-              class="input-text"
-              placeholder="Digite uma mensagem (Deixe vazio para voltar ao normal)"
-              value="{{ msg_custom }}"
-            />
-            <button type="submit" class="btn btn-primary" style="width: auto">
-              <i class="fa-solid fa-check"></i>
-            </button>
-            {% if msg_custom %}
-            <a href="/limpar_msg" class="btn btn-danger" style="width: auto">
-              <i class="fa-solid fa-trash"></i>
-            </a>
-            {% endif %}
-          </form>
-        </div>
-
-        <a
-          href="/alternar_noturno"
-          class="btn btn-secondary"
-          style="justify-content: space-between"
-        >
-          <span
-            ><i class="fa-solid fa-moon"></i> Modo Noturno (Tela Apagada)</span
-          >
-          <span
-            style="
-              font-size: 0.8rem;
-              background: rgba(255, 255, 255, 0.1);
-              padding: 2px 8px;
-              border-radius: 4px;
-            "
-          >
-            {{ 'ATIVADO' if noturno else 'DESATIVADO' }}
-          </span>
-        </a>
-      </div>
-
-      <div id="tab-conteudo" class="tab-content">
-        <div class="card">
-          <div class="card-header">
-            <i class="fa-solid fa-coins"></i> Moedas Monitoradas
-          </div>
-
-          {{ flash_messages(['coin_success', 'coin_error']) }}
-
-          <div class="coin-container" id="coin-list">
+          <h3>Moedas Monitoradas</h3>
+          <div id="coin-list" class="chip-container">
             {% for moeda in moedas %}
-            <div class="coin-chip" data-symbol="{{ moeda }}">
-              {{ moeda }}
-              <a href="/remover/{{ moeda }}" title="Remover"
-                ><i class="fa-solid fa-xmark"></i
-              ></a>
+            <div class="chip" data-symbol="{{ moeda }}">
+              <!-- {{ moeda.replace('USDT','') }} -->
+              {{ moeda}}
+              <span
+                onclick="removeCoin('{{ moeda }}')"
+                class="remove-btn"
+                style="cursor: pointer"
+                >&times;</span
+              >
             </div>
             {% endfor %}
           </div>
-
-          <form action="/adicionar" method="POST" class="add-coin-form">
+          <form onsubmit="submitForm(event, '/adicionar')" class="add-form">
             <input
               type="text"
               name="simbolo"
-              class="input-text"
-              placeholder="Ex: SOL, ADA"
+              placeholder="Ex: BTC, ETH, PEPE"
               required
-              autocomplete="off"
             />
-            <button type="submit" class="btn btn-secondary" style="width: auto">
-              <i class="fa-solid fa-plus"></i>
-            </button>
+            <button type="submit"><i class="fa-solid fa-plus"></i></button>
           </form>
         </div>
+      </div>
 
+      <!-- CONFIG TAB -->
+      <div id="Config" class="tab-content">
         <div class="card">
-          <div class="card-header">
-            <i class="fa-solid fa-layer-group"></i> Gerenciar Telas
-          </div>
-
-          {{ flash_messages(['playlist_success', 'playlist_error']) }}
-
-          <form action="/salvar_playlist" method="POST">
-            {% for page in pages %}
-            <div class="page-row">
-              <div class="switch-wrapper">
-                <label class="toggle-switch">
+          <h3>Playlist de Telas</h3>
+          <form onsubmit="submitForm(event, '/salvar_playlist')">
+            <div class="playlist-list">
+              {% for page in pages %}
+              <div class="playlist-item">
+                <label class="switch">
                   <input
                     type="checkbox"
                     name="enable_{{ page.id }}"
@@ -230,514 +140,330 @@
                     endif
                     %}
                   />
-                  <span class="slider"></span>
+                  <span class="slider round"></span>
                 </label>
-                <span style="font-weight: 500">{{ page.nome }}</span>
-              </div>
-
-              <div class="time-input-group">
-                <i
-                  class="fa-regular fa-clock"
-                  style="font-size: 0.8rem; color: #64748b"
-                ></i>
+                <span class="page-name">{{ page.nome }}</span>
                 <input
                   type="number"
                   name="time_{{ page.id }}"
                   value="{{ page.tempo }}"
                   min="5"
+                  max="300"
+                  class="time-input"
                 />
-                <span>s</span>
+                s
               </div>
+              {% endfor %}
             </div>
-            {% endfor %}
-            <button
-              type="submit"
-              class="btn btn-primary"
-              style="margin-top: 15px"
-            >
-              <i class="fa-solid fa-save"></i> Salvar Alterações
+            <button type="submit" class="btn btn-primary full-width">
+              Salvar Playlist
             </button>
           </form>
         </div>
 
         <div class="card">
-          <div class="card-header">
-            <i class="fa-solid fa-image"></i> Gerenciar Galeria
-          </div>
-
-          {{ flash_messages(['gallery_success', 'gallery_error']) }}
-
-          <form
-            action="/upload_gif"
-            method="POST"
-            enctype="multipart/form-data"
-            style="display: flex; gap: 10px; align-items: center"
-          >
-            <input
-              type="file"
-              name="file"
-              accept=".gif"
-              style="color: var(--text-secondary); font-size: 0.9rem"
-              required
-            />
-            <button type="submit" class="btn btn-primary" style="width: auto">
-              <i class="fa-solid fa-cloud-arrow-up"></i> Enviar
+          <h3>Impressora 3D (Klipper)</h3>
+          <form onsubmit="submitForm(event, '/salvar_printer')">
+            <div class="form-group">
+              <label style="margin-bottom: 5px; display: block"
+                >IP da Impressora</label
+              >
+              <input
+                type="text"
+                name="printer_ip"
+                value="{{ printer_ip }}"
+                placeholder="192.168.x.x"
+              />
+            </div>
+            <div class="form-group">
+              <label style="margin-bottom: 5px; display: block"
+                >Nome de Exibição</label
+              >
+              <input
+                type="text"
+                name="printer_name"
+                value="{{ printer_name }}"
+                placeholder="VORON 2.4"
+              />
+            </div>
+            <button type="submit" class="btn btn-primary full-width">
+              Salvar Impressora
             </button>
           </form>
+        </div>
 
-          <form
-            action="/download_gif"
-            method="POST"
-            style="
-              display: flex;
-              gap: 10px;
-              align-items: center;
-              margin-top: 10px;
-            "
-          >
-            <input
-              type="text"
-              name="url"
-              class="input-text"
-              placeholder="Ou cole a URL de um GIF..."
-              required
-            />
-            <input
-              type="text"
-              name="name"
-              class="input-text"
-              placeholder="Nome"
-              style="width: 30%"
-              required
-            />
-            <button type="submit" class="btn btn-secondary" style="width: auto">
-              <i class="fa-solid fa-cloud-arrow-down"></i>
-            </button>
-          </form>
-
-          {% if gifs %}
-          <div class="gif-gallery">
-            {% for gif in gifs %}
-            <div class="gif-card">
-              <img src="/pixelart/{{ gif }}" loading="lazy" />
-              <div class="gif-card-actions">
-                <a
-                  href="/delete_gif/{{ gif }}"
-                  style="color: var(--danger-color); text-decoration: none"
-                >
-                  <i class="fa-solid fa-trash"></i>
-                </a>
+        <div class="card">
+          <h3>Configurar Wi-Fi</h3>
+          <form onsubmit="submitForm(event, '/salvar_wifi')">
+            <div class="form-group">
+              <label style="margin-bottom: 5px; display: block"
+                >SSID (Nome da Rede)</label
+              >
+              <input
+                type="text"
+                name="ssid"
+                placeholder="Nome do Wi-Fi"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label style="margin-bottom: 5px; display: block">Senha</label>
+              <div style="position: relative">
+                <input
+                  type="password"
+                  id="wifi-psk"
+                  name="psk"
+                  placeholder="Senha do Wi-Fi"
+                  required
+                  style="padding-right: 40px"
+                />
+                <i
+                  class="fa-solid fa-eye"
+                  id="toggle-psk-btn"
+                  onclick="toggleWifiPassword()"
+                  style="
+                    position: absolute;
+                    right: 10px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    cursor: pointer;
+                    color: #94a3b8;
+                  "
+                ></i>
               </div>
             </div>
-            {% endfor %}
-          </div>
-          {% else %}
-          <div
-            style="
-              margin-top: 15px;
-              color: var(--text-secondary);
-              font-size: 0.9rem;
-              text-align: center;
-            "
-          >
-            Nenhum GIF na galeria.
-          </div>
-          {% endif %}
+            <button type="submit" class="btn btn-warning full-width">
+              Salvar e Conectar
+            </button>
+          </form>
+        </div>
+      </div>
 
-          <div
-            style="
-              margin-top: 20px;
-              border-top: 1px solid rgba(255, 255, 255, 0.1);
-              padding-top: 15px;
-            "
+      <!-- GALERIA TAB -->
+      <div id="Galeria" class="tab-content">
+        <div class="card">
+          <h3>Upload de GIF</h3>
+          <form
+            onsubmit="submitForm(event, '/upload_gif')"
+            enctype="multipart/form-data"
+            class="upload-form"
           >
-            <div
-              style="
-                font-size: 0.9rem;
-                color: var(--text-secondary);
-                margin-bottom: 10px;
-              "
-            >
-              <i class="fa-solid fa-globe"></i> Buscar na Internet (Tenor)
-            </div>
+            <input type="file" name="file" accept=".gif" required />
+            <button type="submit" class="btn btn-primary">Enviar</button>
+          </form>
+        </div>
 
-            <div
-              style="
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-                margin-bottom: 15px;
-              "
-            >
-              <div style="display: flex; gap: 10px">
-                <input
-                  type="text"
-                  id="tenor-query"
-                  class="input-text"
-                  placeholder="Ex: Mario, Space, Cyberpunk..."
-                  onkeypress="handleEnter(event)"
-                />
+        <div class="card">
+          <h3>Buscar no Tenor</h3>
+          <div class="search-box">
+            <input
+              type="text"
+              id="tenor-query"
+              placeholder="Ex: Mario, Bitcoin, Cat"
+              onkeypress="handleEnter(event)"
+            />
+            <button onclick="searchTenor()">
+              <i class="fa-solid fa-search"></i>
+            </button>
+          </div>
+          <div
+            id="tenor-loading"
+            style="display: none; text-align: center; padding: 10px"
+          >
+            <i class="fa-solid fa-spinner fa-spin"></i> Buscando...
+          </div>
+          <div id="library-list" class="gif-grid"></div>
+          <div
+            id="load-more-container"
+            style="display: none; text-align: center; margin-top: 10px"
+          >
+            <button onclick="loadMoreTenor()" class="btn btn-secondary">
+              Carregar Mais
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>GIFs Locais</h3>
+          <div class="gif-grid">
+            {% for gif in gifs %}
+            <div class="gif-card">
+              <img
+                src="{{ url_for('serve_pixelart', filename=gif) }}"
+                loading="lazy"
+              />
+              <div class="gif-card-actions">
                 <button
-                  class="btn btn-primary"
-                  style="width: auto"
-                  onclick="searchTenor()"
+                  class="btn-delete"
+                  onclick="deleteGif('{{ gif }}')"
+                  style="background: none; border: none; cursor: pointer"
                 >
-                  <i class="fa-solid fa-magnifying-glass"></i>
+                  <i class="fa-solid fa-trash"></i>
                 </button>
               </div>
             </div>
-
-            <div
-              id="tenor-loading"
-              style="
-                display: none;
-                text-align: center;
-                color: var(--text-secondary);
-                margin: 10px;
-              "
-            >
-              <i class="fa-solid fa-circle-notch fa-spin"></i> Buscando...
-            </div>
-
-            <div class="gif-gallery" id="library-list"></div>
-
-            <div
-              id="load-more-container"
-              style="text-align: center; margin-top: 15px; display: none"
-            >
-              <button
-                class="btn btn-secondary"
-                onclick="loadMoreTenor()"
-                style="width: auto"
-              >
-                Carregar Mais <i class="fa-solid fa-chevron-down"></i>
-              </button>
-            </div>
+            {% endfor %}
           </div>
         </div>
       </div>
 
-      <div id="tab-sistema" class="tab-content">
+      <!-- SISTEMA TAB -->
+      <div id="Sistema" class="tab-content">
+        <!-- Hardware Card -->
         <div class="card">
-          <div class="card-header">
-            <i class="fa-solid fa-server"></i> Status do Sistema
+          <h3><i class="fa-solid fa-microchip"></i> Hardware</h3>
+          <div class="system-grid">
+            <div class="stat-item">
+              <span class="label">CPU Temp</span>
+              <span class="value"
+                ><span id="sys-cpu">{{ cpu_temp }}</span>°C</span
+              >
+            </div>
+            <div class="stat-item">
+              <span class="label">RAM</span>
+              <span class="value"
+                ><span id="sys-ram">{{ ram_usage }}</span>%</span
+              >
+            </div>
+            <div class="stat-item">
+              <span class="label">Load</span>
+              <span class="value"
+                ><span id="sys-load">{{ cpu_load }}</span></span
+              >
+            </div>
+            <div class="stat-item">
+              <span class="label">Uptime</span>
+              <span class="value small" id="sys-uptime">{{ uptime }}</span>
+            </div>
           </div>
-          <div class="info-grid">
-            <div class="info-item">
-              <span class="info-label"
-                ><i class="fa-solid fa-clock"></i> Uptime</span
-              >
-              <span class="info-value">{{ uptime }}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label"
-                ><i class="fa-solid fa-temperature-half"></i> CPU Temp</span
-              >
-              <span class="info-value" style="color: {{ cpu_color }};">
-                {{ cpu_temp }}°C
-              </span>
-            </div>
-            <div class="info-item">
-              <span class="info-label"
-                ><i class="fa-solid fa-sd-card"></i> Disco ({{ disk_percent
-                }}%)</span
-              >
-              <div
-                class="disk-progress-track"
-                style="width: 100%; margin: 5px 0"
-              >
-                <div
-                  class="disk-progress-fill"
-                  style="width: {{ disk_percent }}%; background: {{ disk_color }};"
-                ></div>
-              </div>
-              <span style="font-size: 0.8rem; color: var(--text-secondary)">
-                {{ disk_free }}GB livres
-              </span>
-            </div>
-            <div class="info-item">
-              <span class="info-label"
-                ><i class="fa-solid fa-memory"></i> RAM ({{ ram_percent
-                }}%)</span
-              >
-              <div
-                class="disk-progress-track"
-                style="width: 100%; margin: 5px 0"
-              >
-                <div
-                  class="disk-progress-fill"
-                  style="width: {{ ram_percent }}%; background: {{ ram_color }};"
-                ></div>
-              </div>
-              <span style="font-size: 0.8rem; color: var(--text-secondary)">
-                {{ ram_total }}MB Total
-              </span>
-            </div>
-            <div class="info-item">
-              <span class="info-label"
-                ><i class="fa-solid fa-gauge-high"></i> CPU Load</span
-              >
-              <span class="info-value">{{ load_1m }}</span>
-              <span
-                style="
-                  font-size: 0.7rem;
-                  display: block;
-                  color: var(--text-secondary);
-                "
-                >Média 1 min</span
-              >
-            </div>
-            <div class="info-item">
-              <span class="info-label"
-                ><i class="fa-solid fa-wifi"></i> Wi-Fi</span
-              >
-              <span class="info-value" style="color: {{ wifi_color }};">
-                {{ wifi_percent }}%
-              </span>
-              <span
-                style="
-                  font-size: 0.7rem;
-                  display: block;
-                  color: var(--text-secondary);
-                "
-                >Sinal</span
-              >
-            </div>
-            <div class="info-item">
-              <span class="info-label"
-                ><i class="fa-solid fa-network-wired"></i> IP Local</span
-              >
-              <span class="info-value" style="font-size: 0.9rem"
-                >{{ local_ip }}</span
-              >
-              <span
-                style="
-                  font-size: 0.7rem;
-                  display: block;
-                  color: var(--text-secondary);
-                "
-                >Rede</span
-              >
-            </div>
-            <div class="info-item">
-              <span class="info-label"
-                ><i class="fa-solid fa-stopwatch"></i> Ping</span
-              >
-              <span class="info-value" id="net-ping"
-                ><i
-                  class="fa-solid fa-circle-notch fa-spin"
-                  style="font-size: 0.8rem"
-                ></i
-              ></span>
-              <span
-                style="
-                  font-size: 0.7rem;
-                  display: block;
-                  color: var(--text-secondary);
-                "
-                >Latência</span
-              >
-            </div>
-            <div class="info-item">
-              <span class="info-label"
-                ><i class="fa-solid fa-download"></i> Download</span
-              >
-              <span class="info-value" id="net-download"
-                ><i
-                  class="fa-solid fa-circle-notch fa-spin"
-                  style="font-size: 0.8rem"
-                ></i
-              ></span>
-              <span
-                style="
-                  font-size: 0.7rem;
-                  display: block;
-                  color: var(--text-secondary);
-                "
-                >Estimado</span
-              >
-            </div>
+        </div>
 
-            <div
-              class="info-item"
-              style="
-                grid-column: 1 / -1;
-                height: 280px;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-              "
-            >
-              <span class="info-label" style="margin-bottom: 10px"
-                ><i class="fa-solid fa-chart-pie"></i> Distribuição de Disco
-                (GB)</span
-              >
-              <div style="position: relative; width: 100%; height: 100%">
-                <canvas
-                  id="diskChart"
-                  data-free="{{ disk_free }}"
-                  data-total="{{ disk_total }}"
-                ></canvas>
+        <!-- Rede Card -->
+        <div class="card">
+          <h3><i class="fa-solid fa-wifi"></i> Rede</h3>
+          <div class="network-info">
+            <div class="net-row">
+              <div class="net-detail">
+                <span class="label">IP Local</span>
+                <span class="value" id="sys-ip">{{ ip }}</span>
+              </div>
+              <div class="net-detail">
+                <span class="label">Wi-Fi</span>
+                <span class="value" id="sys-wifi">{{ wifi_ssid }}</span>
+              </div>
+            </div>
+            <div class="net-speed-row">
+              <div class="speed-item">
+                <i class="fa-solid fa-stopwatch"></i> Ping:
+                <span id="net-ping">--</span>
+              </div>
+              <div class="speed-item">
+                <i class="fa-solid fa-download"></i> DL:
+                <span id="net-download">--</span>
               </div>
             </div>
           </div>
         </div>
 
+        <!-- Armazenamento Card -->
         <div class="card">
-          <div class="card-header">
-            <i class="fa-solid fa-wifi"></i> Configuração de Rede
-          </div>
-
-          {{ flash_messages(['wifi_success', 'wifi_error']) }}
-
-          <form
-            action="/salvar_wifi"
-            method="POST"
-            style="display: flex; flex-direction: column; gap: 10px"
-          >
-            <input
-              type="text"
-              name="ssid"
-              class="input-text"
-              placeholder="Nome da Rede (SSID)"
-              required
-            />
-            <input
-              type="password"
-              name="psk"
-              class="input-text"
-              placeholder="Senha do Wi-Fi"
-              required
-            />
-            <div style="display: flex; gap: 10px">
-              <button type="submit" class="btn btn-primary">
-                <i class="fa-solid fa-save"></i> Salvar e Conectar
-              </button>
-              <a
-                href="/wifi_reset"
-                class="btn btn-secondary"
-                style="width: auto"
-                title="Forçar Reconexão"
-                ><i class="fa-solid fa-rotate"></i
-              ></a>
+          <h3>
+            <i class="fa-solid fa-hard-drive"></i> Armazenamento ({{ disk_total
+            }}GB)
+          </h3>
+          <div class="progress-container">
+            <div class="progress-bar">
+              {% for item in disk_breakdown %}
+              <div
+                class="progress-fill"
+                style="width: {{ item.percent }}%; background-color: {{ item.color }}"
+                title="{{ item.name }}: {{ item.size_fmt }}"
+              ></div>
+              {% endfor %}
             </div>
-          </form>
+            <div class="progress-labels">
+              {% for item in disk_breakdown %}
+              <span style="color: {{ item.color }}">
+                <i class="fa-solid fa-folder"></i> {{ item.name }} ({{
+                item.size_fmt }})
+              </span>
+              {% endfor %}
+              <span>{{ disk_free }}GB Livre</span>
+            </div>
+          </div>
         </div>
 
+        <!-- Ações Card -->
         <div class="card">
-          <div class="card-header">
-            <i class="fa-solid fa-cube"></i> Configuração Klipper (Voron)
-          </div>
-
-          {{ flash_messages(['printer_success', 'printer_error']) }}
-
-          <form
-            action="/salvar_printer"
-            method="POST"
-            style="display: flex; flex-direction: column; gap: 10px"
-          >
-            <input
-              type="text"
-              name="printer_name"
-              class="input-text"
-              placeholder="Nome (Ex: VORON 2.4)"
-              value="{{ printer_name }}"
-            />
-            <input
-              type="text"
-              name="printer_ip"
-              class="input-text"
-              placeholder="IP da Impressora (Ex: 192.168.1.50)"
-              value="{{ printer_ip }}"
-              required
-            />
-            <button type="submit" class="btn btn-primary">
-              <i class="fa-solid fa-save"></i>
+          <h3><i class="fa-solid fa-sliders"></i> Gerenciamento</h3>
+          <div class="actions-grid">
+            <button onclick="openLogs()" class="btn btn-secondary">
+              <i class="fa-solid fa-terminal"></i> Logs
             </button>
-          </form>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr; gap: 10px">
-          {% if update_available %}
-          <a
-            href="/atualizar"
-            class="btn btn-primary"
-            onclick="
-              return confirm(
-                'Deseja buscar atualizações no GitHub e reiniciar o sistema?',
-              );
-            "
-          >
-            <i class="fa-solid fa-cloud-arrow-down"></i> Atualizar Versão
-          </a>
-          {% else %}
-          <button
-            class="btn btn-success"
-            disabled
-            style="opacity: 0.8; cursor: default"
-          >
-            <i class="fa-solid fa-check"></i> Sistema Atualizado
-          </button>
-          {% endif %}
-
-          <a
-            href="#"
-            class="btn btn-secondary"
-            onclick="
-              openLogs();
-              return false;
-            "
-          >
-            <i class="fa-solid fa-terminal"></i> Ver Logs do Sistema
-          </a>
+            <button
+              class="btn btn-danger"
+              onclick="confirmShutdown('/desligar')"
+            >
+              <i class="fa-solid fa-power-off"></i> Desligar
+            </button>
+            <button
+              class="btn btn-warning"
+              onclick="confirmAction('/reiniciar', 'Reiniciar o painel?')"
+            >
+              <i class="fa-solid fa-rotate-right"></i> Reiniciar
+            </button>
+          </div>
         </div>
       </div>
-
-      <footer
-        style="
-          text-align: center;
-          margin-top: 30px;
-          color: var(--text-secondary);
-          font-size: 0.8rem;
-          opacity: 0.8;
-        "
-      >
-        &copy; 2026 BITDEV Monitor by Tauser. Todos os direitos reservados.
-      </footer>
     </div>
 
     <div id="logModal" class="modal">
       <div class="modal-content">
-        <div class="modal-header">
-          <h2><i class="fa-solid fa-terminal"></i> Logs do Sistema</h2>
-          <span class="close-modal" onclick="closeModal()">&times;</span>
+        <span class="close" onclick="closeModal()">&times;</span>
+        <h2>Logs do Sistema</h2>
+        <pre id="log-output">Carregando...</pre>
+        <button onclick="fetchLogs()" class="btn btn-secondary">
+          Atualizar
+        </button>
+      </div>
+    </div>
+
+    <!-- Modal de Confirmação Genérica -->
+    <div id="confirmModal" class="modal">
+      <div class="modal-content modal-sm">
+        <h3 id="confirmTitle">Confirmação</h3>
+        <p id="confirmMessage">Tem certeza?</p>
+        <div id="confirmInputContainer" style="display: none; margin: 15px 0">
+          <input
+            type="text"
+            id="confirmInput"
+            style="text-align: center; text-transform: uppercase"
+            autocomplete="off"
+          />
         </div>
-        <div class="modal-body">
-          <pre id="log-output">Carregando...</pre>
-        </div>
-        <div class="modal-footer">
-          <button
-            class="btn btn-secondary"
-            onclick="fetchLogs()"
-            style="width: auto"
-          >
-            <i class="fa-solid fa-rotate"></i> Atualizar
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="closeConfirmModal()">
+            Cancelar
           </button>
           <button
-            class="btn btn-primary"
-            onclick="closeModal()"
-            style="width: auto"
+            class="btn btn-danger"
+            id="confirmBtnAction"
+            onclick="executeConfirm()"
           >
-            Fechar
+            Confirmar
           </button>
         </div>
       </div>
     </div>
 
-    <script
-      src="{{ url_for('static', filename='script.js') }}?v=2.0"
-      defer
-    ></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+
+    <!-- Injeta mensagens flash do servidor como toasts -->
+    <script>
+      const flashMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
+      if (flashMessages && flashMessages.length > 0) {
+        flashMessages.forEach(msg => showToast(msg[1], msg[0]));
+      }
+    </script>
   </body>
 </html>

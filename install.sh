@@ -7,7 +7,7 @@ echo "--- INSTALADOR AUTOMÁTICO BITDEV MONITOR ---"
 
 echo ">> [1/5] Atualizando sistema e instalando dependências..."
 sudo apt-get update
-sudo apt-get install -y python3-dev python3-pip python3-pillow git python3-setuptools
+sudo apt-get install -y python3-dev python3-pip python3-pillow git python3-setuptools wireless-tools
 
 echo ">> [2/5] Instalando bibliotecas Python..."
 sudo pip3 install flask requests --break-system-packages
@@ -35,6 +35,9 @@ USER_NAME=${SUDO_USER:-$(whoami)}
 PROJECT_DIR=$(pwd)
 CHOWN_BIN=$(which chown)
 SERVICE_FILE="/etc/systemd/system/crypto.service"
+
+# Garante pasta de imagens
+mkdir -p "$PROJECT_DIR/images"
 
 # Cria arquivo de config se não existir (para novas instalações)
 CONFIG_FILE="$PROJECT_DIR/user_config.json"

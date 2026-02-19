@@ -1,3 +1,167 @@
+// --- SISTEMA DE NOTIFICAÇÕES (TOAST) ---
+function showToast(message, type = "info") {
+  const container = document.getElementById("toast-container");
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `<span>${message}</span> <span style="cursor:pointer; margin-left:10px;" onclick="this.parentElement.remove()">&times;</span>`;
+
+  container.appendChild(toast);
+
+  // Remove automaticamente após 4 segundos
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    setTimeout(() => toast.remove(), 300);
+  }, 4000);
+}
+
+// --- FUNÇÕES GENÉRICAS DE AÇÃO ---
+function submitForm(event, url, formElement = null) {
+  if (event) event.preventDefault();
+  const form = formElement || event.target;
+  const formData = new FormData(form);
+
+  fetch(url, {
+    method: "POST",
+    body: formData,
+  })
+    .then((response) => {
+      if (response.redirected) {
+        window.location.href = response.url;
+        return;
+      }
+      return response.json().catch(() => ({})); // Tenta ler JSON, se falhar retorna vazio
+    })
+    .then((data) => {
+      // Se a resposta for JSON com mensagem
+      if (data && data.message) {
+        showToast(data.message, data.status || "success");
+      } else {
+        // Fallback se não houver JSON (ex: reload da página)
+        // showToast('Ação realizada com sucesso!', 'success');
+        // Recarrega para atualizar dados se necessário
+        setTimeout(() => window.location.reload(), 500);
+      }
+    })
+    .catch((err) => showToast("Erro ao processar ação: " + err, "error"));
+}
+
+// --- MODAL DE CONFIRMAÇÃO PERSONALIZADA ---
+let currentConfirmCallback = null;
+
+function showConfirmModal(title, message, callback, expectedInput = null) {
+  document.getElementById("confirmTitle").innerText = title;
+  document.getElementById("confirmMessage").innerText = message;
+  currentConfirmCallback = callback;
+
+  const inputContainer = document.getElementById("confirmInputContainer");
+  const inputField = document.getElementById("confirmInput");
+  const confirmBtn = document.getElementById("confirmBtnAction");
+
+  // Configura modal para input de texto (ex: digitar "SIM") ou apenas botão
+  if (expectedInput) {
+    inputContainer.style.display = "block";
+    inputField.value = "";
+    inputField.placeholder = `Digite '${expectedInput}' para confirmar`;
+    confirmBtn.disabled = true;
+    confirmBtn.style.opacity = "0.5";
+
+    // Validação em tempo real
+    inputField.onkeyup = function () {
+      if (this.value.toUpperCase() === expectedInput) {
+        confirmBtn.disabled = false;
+        confirmBtn.style.opacity = "1";
+      } else {
+        confirmBtn.disabled = true;
+        confirmBtn.style.opacity = "0.5";
+      }
+    };
+    setTimeout(() => inputField.focus(), 100);
+  } else {
+    inputContainer.style.display = "none";
+    confirmBtn.disabled = false;
+    confirmBtn.style.opacity = "1";
+    inputField.onkeyup = null;
+  }
+
+  document.getElementById("confirmModal").style.display = "block";
+}
+
+function closeConfirmModal() {
+  document.getElementById("confirmModal").style.display = "none";
+  currentConfirmCallback = null;
+}
+
+function executeConfirm() {
+  if (currentConfirmCallback) currentConfirmCallback();
+  closeConfirmModal();
+}
+
+// --- AÇÕES DO SISTEMA ---
+
+function confirmAction(url, message) {
+  showConfirmModal("Atenção", message, () => {
+    fetch(url)
+      .then((response) => {
+        if (response.redirected) window.location.href = response.url;
+        else showToast("Comando enviado.", "success");
+      })
+      .catch((err) => showToast("Erro: " + err, "error"));
+  });
+}
+
+function confirmShutdown(url) {
+  showConfirmModal(
+    "PERIGO",
+    "Isso desligará o Raspberry Pi. Digite SIM para continuar:",
+    () => {
+      fetch(url)
+        .then((response) => {
+          if (response.redirected) window.location.href = response.url;
+          else showToast("Desligando sistema...", "success");
+        })
+        .catch((err) => showToast("Erro: " + err, "error"));
+    },
+    "SIM", // Exige digitar SIM
+  );
+}
+
+function removeCoin(symbol) {
+  showConfirmModal("Remover Moeda", "Deseja remover " + symbol + "?", () => {
+    fetch("/remover/" + symbol)
+      .then(() => {
+        showToast(symbol + " removido.", "success");
+        const el = document.querySelector(`.chip[data-symbol="${symbol}"]`);
+        if (el) el.remove();
+      })
+      .catch((err) => showToast("Erro ao remover.", "error"));
+  });
+}
+
+function deleteGif(filename) {
+  showConfirmModal("Excluir GIF", "Excluir " + filename + "?", () => {
+    fetch("/delete_gif/" + filename)
+      .then(() => {
+        showToast("GIF excluído.", "success");
+        setTimeout(() => window.location.reload(), 500);
+      })
+      .catch((err) => showToast("Erro ao excluir.", "error"));
+  });
+}
+
+function toggleWifiPassword() {
+  const input = document.getElementById("wifi-psk");
+  const icon = document.getElementById("toggle-psk-btn");
+  if (input.type === "password") {
+    input.type = "text";
+    icon.classList.remove("fa-eye");
+    icon.classList.add("fa-eye-slash");
+  } else {
+    input.type = "password";
+    icon.classList.remove("fa-eye-slash");
+    icon.classList.add("fa-eye");
+  }
+}
+
 const modal = document.getElementById("logModal");
 const logOutput = document.getElementById("log-output");
 
@@ -85,6 +249,29 @@ if (coinList) {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
+  // Atualiza status do sistema (CPU/RAM) a cada 5s
+  // (Movido para o topo para garantir execução mesmo se houver erro no Chart.js)
+  setInterval(() => {
+    fetch("/api/status")
+      .then((r) => r.json())
+      .then((data) => {
+        const cpu = document.getElementById("sys-cpu");
+        const ram = document.getElementById("sys-ram");
+        const load = document.getElementById("sys-load");
+        const uptime = document.getElementById("sys-uptime");
+        const wifi = document.getElementById("sys-wifi");
+        const ip = document.getElementById("sys-ip");
+
+        if (cpu) cpu.textContent = data.cpu_temp;
+        if (ram) ram.textContent = data.ram_usage;
+        if (load) load.textContent = data.cpu_load;
+        if (uptime) uptime.textContent = data.uptime;
+        if (wifi) wifi.textContent = data.wifi_ssid;
+        if (ip) ip.textContent = data.ip;
+      })
+      .catch(() => {});
+  }, 5000);
+
   const activeTab = localStorage.getItem("activeTab");
   if (activeTab) {
     const tabLinks = document.getElementsByClassName("tab-btn");
@@ -94,38 +281,6 @@ document.addEventListener("DOMContentLoaded", function () {
         break;
       }
     }
-  }
-
-  const diskCanvas = document.getElementById("diskChart");
-  if (diskCanvas) {
-    const free = parseFloat(diskCanvas.getAttribute("data-free"));
-    const total = parseFloat(diskCanvas.getAttribute("data-total"));
-    const used = (total - free).toFixed(1);
-
-    new Chart(diskCanvas, {
-      type: "doughnut",
-      data: {
-        labels: ["Usado", "Livre"],
-        datasets: [
-          {
-            data: [used, free],
-            backgroundColor: ["#ef4444", "#10b981"],
-            borderWidth: 0,
-            hoverOffset: 4,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: "bottom",
-            labels: { color: "#94a3b8", font: { family: "Inter" } },
-          },
-        },
-      },
-    });
   }
 
   const pingEl = document.getElementById("net-ping");
@@ -178,7 +333,7 @@ function fetchTenorData() {
   loading.style.display = "block";
   loadMoreBtn.style.display = "none";
 
-  let url = `/api/search_tenor?q=${encodeURIComponent(currentTenorQuery)}`;
+  let url = `/search_gif?q=${encodeURIComponent(currentTenorQuery)}`;
   if (currentTenorPos) {
     url += `&pos=${currentTenorPos}`;
   }
@@ -214,12 +369,3 @@ function fetchTenorData() {
       }
     });
 }
-
-setTimeout(() => {
-  const alerts = document.querySelectorAll(".flash-msg");
-  alerts.forEach((alert) => {
-    alert.style.transition = "opacity 0.5s ease";
-    alert.style.opacity = "0";
-    setTimeout(() => alert.remove(), 500);
-  });
-}, 5000);

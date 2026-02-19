@@ -1,45 +1,25 @@
-from flask import Flask, render_template, request, redirect, flash, send_from_directory, jsonify
-import json
+from flask import Flask, render_template, request, redirect, flash, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
+import json
 import subprocess
 import time
 import os
 import config as cfg
 import requests
 import shutil
-from datetime import timedelta
 import socket
+import getpass
 
 app = Flask(__name__)
 app.secret_key = 'chave_secreta_crypto_monitor'
-
-# Migracao automatica: Se existir moedas.json e nao existir user_config.json, renomeia
-OLD_CONFIG = os.path.join(cfg.BASE_DIR, 'moedas.json')
 CONFIG_PATH = os.path.join(cfg.BASE_DIR, 'user_config.json')
+PIXELART_FOLDER = os.path.join(cfg.BASE_DIR, 'images', 'pixelart')
 
-if os.path.exists(OLD_CONFIG) and not os.path.exists(CONFIG_PATH):
-    os.rename(OLD_CONFIG, CONFIG_PATH)
+# Garante que a pasta existe ao iniciar o sistema
+if not os.path.exists(PIXELART_FOLDER):
+    os.makedirs(PIXELART_FOLDER)
 
-PIXELART_FOLDER = os.path.join(cfg.BASE_DIR, 'images/pixelart')
-
-DEFAULT_LIBRARY = [
-    {"name": "Nyan Cat", "url": "https://media.tenor.com/2roX3uxz_68AAAAM/cat-space.gif"},
-    {"name": "Mario Run", "url": "https://media.tenor.com/N_8P2rX3yJAAAAAM/mario-running.gif"},
-    {"name": "Pacman", "url": "https://media.tenor.com/images/01a50c3b5364413b46d24023e4458e6e/tenor.gif"},
-    {"name": "Sonic", "url": "https://media.tenor.com/P_e9_3j3V5gAAAAM/sonic-run.gif"},
-    {"name": "Pikachu", "url": "https://media.tenor.com/fSsxHn4tS4QAAAAM/pikachu-running.gif"},
-    # Vibe / Ambiente
-    {"name": "Cyber City", "url": "https://media.tenor.com/images/193959455743957281163e3f90815219/tenor.gif"},
-    {"name": "Rain", "url": "https://media.tenor.com/bC57M4vTj6IAAAAM/rain-pixel-art.gif"},
-    {"name": "Sunset", "url": "https://media.tenor.com/images/1c3d22588377c0589337533109282306/tenor.gif"},
-    {"name": "Coffee", "url": "https://media.tenor.com/5a7USwwt_lQAAAAM/coffee-pixel-art.gif"},
-    {"name": "Fire", "url": "https://media.tenor.com/G_0j2eH-f60AAAAM/pixel-fire.gif"},
-    # Sci-Fi / Tech
-    {"name": "Matrix", "url": "https://media.tenor.com/2_fC2s0t_iwAAAAM/matrix-code.gif"},
-    {"name": "Glitch", "url": "https://media.tenor.com/BfR_W3D0i1wAAAAM/pixel-glitch.gif"},
-    {"name": "Invaders", "url": "https://media.tenor.com/images/14a33df945daac773e12096c469c4039/tenor.gif"},
-    {"name": "Loading", "url": "https://media.tenor.com/G7LfW0O5qF8AAAAM/loading-pixel.gif"}
-]
+print(f">> [APP] Carregando rotas Web v2.1. Rodando como: {getpass.getuser()}")
 
 def ler_config():
     try:
@@ -51,7 +31,6 @@ def ler_config():
             "brilho": 50, 
             "last_brilho_change": 0, 
             "modo_noturno": False,
-            "msg_custom": "",
             "cidade": "Sao_Paulo",
             "pages": [
                 {"id": "DASHBOARD", "nome": "Dashboard Cripto", "enabled": True, "tempo": 30},
@@ -61,44 +40,183 @@ def ler_config():
             ]
         }
 
-def fix_file_ownership(filepath):
-    """Devolve a posse do arquivo para o usuario comum (ex: pi)"""
-    try:
-        stat_info = os.stat(cfg.BASE_DIR)
-        os.chown(filepath, stat_info.st_uid, stat_info.st_gid)
-        os.chmod(filepath, 0o666)
-    except: pass
-
 def salvar_config(config):
-    tmp_path = CONFIG_PATH + ".tmp"
-    bak_path = CONFIG_PATH + ".bak"
-    try:
-        with open(tmp_path, 'w') as f:
-            json.dump(config, f, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        if os.path.exists(CONFIG_PATH): shutil.copy2(CONFIG_PATH, bak_path)
-        os.replace(tmp_path, CONFIG_PATH)
-        fix_file_ownership(CONFIG_PATH)
-    except Exception as e:
-        print(f"Erro crítico ao salvar config: {e}")
+    with open(CONFIG_PATH, 'w') as f:
+        json.dump(config, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
 
-def verificar_atualizacao():
-    # Se não tem pasta .git (instalação manual), mostra botão para permitir reparação
-    if not os.path.exists(os.path.join(cfg.BASE_DIR, ".git")):
-        return True
+def get_folder_size(folder):
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(folder):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            if not os.path.islink(fp):
+                total_size += os.path.getsize(fp)
+    return total_size
+
+def get_sys_metrics():
+    m = {
+        'cpu_temp': 0, 'ram_usage': 0, 
+        'disk_usage': 0, 'disk_total': 0, 'disk_free': 0, 'disk_breakdown': [],
+        'uptime': '--', 'cpu_load': 0, 'ip': '127.0.0.1', 'wifi_ssid': 'Desconectado'
+    }
+    
+    # CPU Temp
     try:
-        # Verifica atualizações silenciosamente (timeout curto para não travar a página)
-        subprocess.run(['git', 'fetch'], cwd=cfg.BASE_DIR, timeout=2, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        local = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=cfg.BASE_DIR).decode().strip()
-        remote = subprocess.check_output(['git', 'rev-parse', '@{u}'], cwd=cfg.BASE_DIR).decode().strip()
-        return local != remote
+        with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
+            m['cpu_temp'] = round(int(f.read()) / 1000, 1)
+    except Exception as e: print(f"Erro CPU Temp: {e}")
+    
+    # Fallback CPU (vcgencmd)
+    if m['cpu_temp'] == 0:
+        try:
+            out = subprocess.check_output(['vcgencmd', 'measure_temp']).decode()
+            m['cpu_temp'] = float(out.replace("temp=", "").replace("'C", "").strip())
+        except: pass
+
+    # CPU Load (Média 1 min)
+    try:
+        with open("/proc/loadavg", "r") as f:
+            m['cpu_load'] = f.read().split()[0]
+    except Exception as e: print(f"Erro Load: {e}")
+
+    # Uptime
+    try:
+        with open("/proc/uptime", "r") as f:
+            uptime_seconds = float(f.readline().split()[0])
+            days, rem = divmod(int(uptime_seconds), 86400)
+            hours, rem = divmod(rem, 3600)
+            minutes = rem // 60
+            if days > 0: m['uptime'] = f"{days}d {hours}h {minutes}m"
+            else: m['uptime'] = f"{hours}h {minutes}m"
+    except Exception as e: print(f"Erro Uptime: {e}")
+    
+    try:
+        mem = {}
+        with open("/proc/meminfo", "r") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2:
+                    key = parts[0].rstrip(':')
+                    mem[key] = int(parts[1])
+        
+        if 'MemTotal' in mem:
+            total = mem['MemTotal']
+            avail = mem.get('MemAvailable', mem.get('MemFree', 0))
+            if total > 0:
+                m['ram_usage'] = round(((total - avail) / total) * 100, 1)
+    except Exception as e: print(f"Erro RAM: {e}")
+    
+    # Fallback RAM (free command)
+    if m['ram_usage'] == 0:
+        try:
+            out = subprocess.check_output(['free', '-m']).decode().splitlines()[1].split()
+            total = int(out[1])
+            used = int(out[2])
+            m['ram_usage'] = round((used / total) * 100, 1)
+        except: pass
+    
+    try:
+        # Usa o disco onde o projeto está rodando
+        total, used, free = shutil.disk_usage(cfg.BASE_DIR)
+        if total > 0:
+            m['disk_usage'] = round((used / total) * 100, 1)
+            m['disk_total'] = round(total / (1024**3), 1)
+            m['disk_free'] = round(free / (1024**3), 1)
+            
+            # --- Análise Dinâmica de Pastas ---
+            project_usage = 0
+            folders = []
+            
+            # Escaneia pastas na raiz do projeto
+            if os.path.exists(cfg.BASE_DIR):
+                for entry in os.scandir(cfg.BASE_DIR):
+                    if entry.is_dir() and not entry.name.startswith('.'): # Ignora ocultos
+                        size = get_folder_size(entry.path)
+                        if size > 1024*1024: # Mostra apenas pastas > 1MB
+                            folders.append({'name': entry.name.capitalize(), 'size': size})
+                            project_usage += size
+            
+            # Ordena por tamanho
+            folders.sort(key=lambda x: x['size'], reverse=True)
+            
+            # Calcula o resto do sistema (Total Usado - Pastas do Projeto)
+            system_usage = max(0, used - project_usage)
+            
+            # Monta a lista para o gráfico (Sistema + Top 4 pastas do projeto)
+            # Cores para rotação
+            colors = ['#a855f7', '#f59e0b', '#10b981', '#ec4899', '#6366f1']
+            
+            # 1. Sistema (Sempre primeiro)
+            m['disk_breakdown'].append({
+                'name': 'Sistema',
+                'percent': (system_usage / total) * 100,
+                'size_fmt': f"{system_usage / (1024**3):.1f}GB",
+                'color': '#3b82f6' # Azul
+            })
+            
+            # 2. Pastas do Projeto
+            for i, f in enumerate(folders[:4]):
+                m['disk_breakdown'].append({
+                    'name': f['name'],
+                    'percent': (f['size'] / total) * 100,
+                    'size_fmt': f"{f['size'] / (1024**2):.0f}MB",
+                    'color': colors[i % len(colors)]
+                })
+            
+    except Exception as e: print(f"Erro Disk: {e}")
+
+    # IP Local
+    try:
+        # Tenta via socket (precisa de rota para internet)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.1)
+        s.connect(('8.8.8.8', 1))
+        m['ip'] = s.getsockname()[0]
+        s.close()
     except:
-        return False # Se der erro (sem internet), assume que não tem update
+        # Fallback: hostname -I (funciona localmente)
+        try:
+            cmd = ['hostname', '-I']
+            if os.path.exists('/usr/bin/hostname'): cmd = ['/usr/bin/hostname', '-I']
+            elif os.path.exists('/bin/hostname'): cmd = ['/bin/hostname', '-I']
+            
+            out = subprocess.check_output(cmd).decode().strip()
+            if out: m['ip'] = out.split()[0]
+        except:
+            # Fallback IP (ip route)
+            try:
+                out = subprocess.check_output(['ip', 'route', 'get', '1.1.1.1']).decode()
+                # "1.1.1.1 via ... src 192.168.X.X ..."
+                m['ip'] = out.split('src')[1].split()[0]
+            except Exception as e: print(f"Erro IP: {e}")
+
+    # Wi-Fi SSID
+    try:
+        # Tenta caminhos comuns para iwgetid
+        cmd = ['iwgetid', '-r']
+        if os.path.exists('/sbin/iwgetid'): cmd = ['/sbin/iwgetid', '-r']
+        elif os.path.exists('/usr/sbin/iwgetid'): cmd = ['/usr/sbin/iwgetid', '-r']
+        
+        ssid = subprocess.check_output(cmd).decode().strip()
+        if ssid: m['wifi_ssid'] = ssid
+    except:
+        # Fallback final: Tenta ler do arquivo de config
+        try:
+            with open("/etc/wpa_supplicant/wpa_supplicant.conf", "r") as f:
+                for line in f:
+                    if "ssid=" in line:
+                        m['wifi_ssid'] = line.split('=')[1].strip().strip('"')
+                        break
+        except Exception as e: print(f"Erro WiFi: {e}")
+
+    return m
 
 @app.route('/')
 def index():
     config = ler_config()
+    # Garante que a chave pages exista (para compatibilidade)
     if 'pages' not in config:
         config['pages'] = [
             {"id": "DASHBOARD", "nome": "Dashboard Cripto", "enabled": True, "tempo": 30},
@@ -107,112 +225,31 @@ def index():
         ]
         salvar_config(config)
         
-    lista_gifs = []
+    # Listar GIFs locais para a galeria
+    local_gifs = []
     if os.path.exists(PIXELART_FOLDER):
-        lista_gifs = [f for f in os.listdir(PIXELART_FOLDER) if f.lower().endswith('.gif')]
-        lista_gifs.sort()
-
-    total, used, free = shutil.disk_usage("/")
-    disk_free = round(free / (1024**3), 1)
-    disk_total = round(total / (1024**3), 1)
-    disk_percent = int((used / total) * 100)
-
-    try:
-        with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
-            cpu_temp = round(int(f.read()) / 1000, 1)
-    except:
-        cpu_temp = 0
-
-    uptime_str = "N/A"
-    try:
-        with open('/proc/uptime', 'r') as f:
-            uptime_seconds = float(f.readline().split()[0])
-            uptime_str = str(timedelta(seconds=int(uptime_seconds)))
-    except: pass
-
-    ram_percent = 0
-    ram_total_mb = 0
-    try:
-        with open('/proc/meminfo', 'r') as f:
-            meminfo = {line.split(':')[0]: int(line.split(':')[1].split()[0]) for line in f}
+        local_gifs = [f for f in os.listdir(PIXELART_FOLDER) if f.lower().endswith('.gif')]
         
-        ram_total_mb = round(meminfo['MemTotal'] / 1024)
-        ram_available_mb = round(meminfo['MemAvailable'] / 1024)
-        ram_used_mb = ram_total_mb - ram_available_mb
-        ram_percent = int((ram_used_mb / ram_total_mb) * 100)
-    except: pass
-
-    load_1m = 0
-    try:
-        with open('/proc/loadavg', 'r') as f:
-            load_1m = float(f.read().split()[0])
-    except: pass
-
-    wifi_percent = 0
-    try:
-        with open('/proc/net/wireless', 'r') as f:
-            for line in f:
-                if "wlan0" in line:
-                    quality = float(line.split()[2].replace('.', ''))
-                    wifi_percent = int((quality / 70) * 100)
-                    if wifi_percent > 100: wifi_percent = 100
-    except: pass
-
-    local_ip = "127.0.0.1"
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        local_ip = s.getsockname()[0]
-        s.close()
-    except: 
-        pass
-        
-    # --- Lógica de Cores (Calculada aqui para limpar o HTML) ---
-    cpu_color = 'var(--success-color)'
-    if cpu_temp > 70: cpu_color = 'var(--danger-color)'
-    elif cpu_temp > 55: cpu_color = 'var(--warning-color)'
-
-    disk_color = 'var(--success-color)'
-    if disk_percent > 90: disk_color = 'var(--danger-color)'
-    elif disk_percent > 75: disk_color = 'var(--warning-color)'
-
-    ram_color = 'var(--accent-color)'
-    if ram_percent > 85: ram_color = 'var(--danger-color)'
-    elif ram_percent > 60: ram_color = 'var(--warning-color)'
-
-    wifi_color = 'var(--danger-color)'
-    if wifi_percent > 70: wifi_color = 'var(--success-color)'
-    elif wifi_percent > 40: wifi_color = 'var(--warning-color)'
-
-    update_available = verificar_atualizacao()
-
-    library_gifs = DEFAULT_LIBRARY
+    sys_data = get_sys_metrics()
 
     return render_template('index.html', 
                            moedas=config['secundarias'], 
                            brilho=config.get('brilho', 50),
                            noturno=config.get('modo_noturno', False),
-                           msg_custom=config.get('msg_custom', ''),
                            pages=config['pages'],
                            printer_ip=config.get('printer_ip', ''),
                            printer_name=config.get('printer_name', 'VORON 2.4'),
-                           gifs=lista_gifs,
-                           disk_free=disk_free,
-                           disk_total=disk_total,
-                           disk_percent=disk_percent,
-                           cpu_temp=cpu_temp,
-                           uptime=uptime_str,
-                           ram_percent=ram_percent,
-                           ram_total=ram_total_mb,
-                           load_1m=load_1m,
-                           wifi_percent=wifi_percent,
-                           local_ip=local_ip,
-                           library=library_gifs,
-                           cpu_color=cpu_color,
-                           disk_color=disk_color,
-                           ram_color=ram_color,
-                           wifi_color=wifi_color,
-                           update_available=update_available)
+                           gifs=local_gifs,
+                           cpu_temp=sys_data['cpu_temp'],
+                           ram_usage=sys_data['ram_usage'],
+                           disk_usage=sys_data['disk_usage'],
+                           disk_total=sys_data['disk_total'],
+                           disk_free=sys_data['disk_free'],
+                           disk_breakdown=sys_data['disk_breakdown'],
+                           cpu_load=sys_data['cpu_load'],
+                           uptime=sys_data['uptime'],
+                           wifi_ssid=sys_data['wifi_ssid'],
+                           ip=sys_data['ip'])
 
 @app.route('/brilho', methods=['POST'])
 def ajustar_brilho():
@@ -221,15 +258,13 @@ def ajustar_brilho():
     config['brilho'] = int(nivel)
     config['last_brilho_change'] = time.time()
     salvar_config(config)
-    return redirect('/')
+    return jsonify({'message': f'Brilho ajustado para {nivel}%', 'status': 'success'})
 
 @app.route('/alternar_noturno')
 def alternar_noturno():
     config = ler_config()
     config['modo_noturno'] = not config.get('modo_noturno', False)
     salvar_config(config)
-    status = "ATIVADO" if config['modo_noturno'] else "DESATIVADO"
-    flash(f"Modo Noturno {status}", 'control_success')
     return redirect('/')
 
 @app.route('/adicionar', methods=['POST'])
@@ -237,32 +272,40 @@ def adicionar():
     simbolo = request.form.get('simbolo').upper().strip()
     if simbolo and not simbolo.endswith('USDT'): simbolo += 'USDT'
     
+    # --- VALIDAÇÃO: Verifica se a moeda existe na Binance ---
     try:
         test_url = f"https://api.binance.com/api/v3/ticker/price?symbol={simbolo}"
         r = requests.get(test_url, timeout=2)
         if r.status_code != 200:
-            flash(f"Erro: A moeda '{simbolo}' não foi encontrada na Binance!", 'coin_error')
-            return redirect('/')
+            return jsonify({'message': f"Erro: A moeda '{simbolo}' não foi encontrada na Binance!", 'status': 'error'})
     except:
-        flash("Erro: Falha na conexão ao validar moeda.", 'coin_error')
-        return redirect('/')
+        return jsonify({'message': "Erro: Falha na conexão ao validar moeda.", 'status': 'error'})
 
     config = ler_config()
     if simbolo and simbolo not in config['secundarias']:
         config['secundarias'].append(simbolo)
         salvar_config(config)
-    return redirect('/')
+    return jsonify({'message': f'{simbolo} adicionada com sucesso!', 'status': 'success'})
 
 @app.route('/reordenar_moedas', methods=['POST'])
 def reordenar_moedas():
     data = request.get_json()
-    nova_ordem = data.get('moedas', [])
-    if nova_ordem:
-        config = ler_config()
-        config['secundarias'] = nova_ordem
-        salvar_config(config)
-        return jsonify({'status': 'success'})
-    return jsonify({'status': 'error'}), 400
+    if not data or 'moedas' not in data: return jsonify({'error': 'Dados invalidos'}), 400
+    
+    config = ler_config()
+    novas = data['moedas']
+    
+    # Garante integridade: mantem apenas moedas que ja existiam, na nova ordem
+    atuais = set(config['secundarias'])
+    final = [m for m in novas if m in atuais]
+    
+    # Se sobrou alguma (erro de sync), adiciona no final
+    for m in config['secundarias']:
+        if m not in final: final.append(m)
+        
+    config['secundarias'] = final
+    salvar_config(config)
+    return jsonify({'success': True})
 
 @app.route('/remover/<simbolo>')
 def remover(simbolo):
@@ -270,24 +313,24 @@ def remover(simbolo):
     if simbolo in config['secundarias']:
         config['secundarias'].remove(simbolo)
         salvar_config(config)
-        flash(f"Moeda {simbolo} removida.", 'coin_success')
-    return redirect('/')
+    return jsonify({'message': f'{simbolo} removida.', 'status': 'success'})
 
 @app.route('/salvar_playlist', methods=['POST'])
 def salvar_playlist():
     config = ler_config()
     novas_paginas = []
     
+    # Reconstrói a lista baseada no form
     for page in config.get('pages', []):
         pid = page['id']
+        # Checkbox: se não vier no form, é False
         enabled = request.form.get(f"enable_{pid}") == "on"
         tempo = int(request.form.get(f"time_{pid}", 15))
         page['enabled'] = enabled
         page['tempo'] = tempo
     
     salvar_config(config)
-    flash("Configurações de tela salvas.", 'playlist_success')
-    return redirect('/')
+    return jsonify({'message': 'Playlist salva com sucesso!', 'status': 'success'})
 
 @app.route('/salvar_printer', methods=['POST'])
 def salvar_printer():
@@ -297,43 +340,36 @@ def salvar_printer():
     config['printer_ip'] = ip
     config['printer_name'] = name
     salvar_config(config)
-    flash("Configuração da impressora salva.", 'printer_success')
-    return redirect('/')
+    return jsonify({'message': 'Configurações da impressora salvas!', 'status': 'success'})
 
 @app.route('/reiniciar')
 def reiniciar_painel():
-    subprocess.run(['sudo', 'systemctl', 'restart', 'crypto.service'])
+    # Agenda o reinicio para daqui a 1 segundo em background
+    # Isso permite retornar o redirect para o navegador antes do servidor morrer
+    def restart_later():
+        time.sleep(1)
+        subprocess.run(['sudo', 'systemctl', 'restart', 'crypto.service'])
+    
+    import threading
+    threading.Thread(target=restart_later).start()
+    
+    flash("Reiniciando painel... Aguarde 10s.", 'success')
     return redirect('/')
 
 @app.route('/desligar')
 def desligar_sistema():
+    flash("Desligando sistema... Aguarde.", 'success')
     subprocess.run(['sudo', 'shutdown', 'now'])
-    return "Sistema desligando... Pode remover da tomada em 30 segundos."
-
-@app.route('/salvar_msg', methods=['POST'])
-def salvar_msg():
-    msg = request.form.get('msg', '')
-    config = ler_config()
-    config['msg_custom'] = msg
-    salvar_config(config)
-    flash("Mensagem do letreiro atualizada.", 'control_success')
-    return redirect('/')
-
-@app.route('/limpar_msg')
-def limpar_msg():
-    config = ler_config()
-    config['msg_custom'] = ""
-    salvar_config(config)
-    flash("Mensagem do letreiro removida.", 'control_success')
     return redirect('/')
 
 @app.route('/wifi_reset')
 def wifi_reset():
     try:
+        # Força o wpa_supplicant a reler a configuração e reconectar
         subprocess.run(['sudo', 'wpa_cli', '-i', 'wlan0', 'reconfigure'])
-        flash("Comando de reconexão Wi-Fi enviado.", 'wifi_success')
+        flash("Comando de reconexão Wi-Fi enviado.", 'success')
     except Exception as e:
-        flash(f"Erro ao tentar reconectar: {e}", 'wifi_error')
+        flash(f"Erro ao tentar reconectar: {e}", 'error')
     return redirect('/')
 
 @app.route('/salvar_wifi', methods=['POST'])
@@ -342,169 +378,141 @@ def salvar_wifi():
     psk = request.form.get('psk')
     
     if not ssid or not psk:
-        flash("Erro: SSID e Senha são obrigatórios.", 'wifi_error')
+        flash("Erro: SSID e Senha são obrigatórios.", 'error')
         return redirect('/')
         
+    # Cria o conteúdo do arquivo wpa_supplicant
     config_content = f"""country=BR\nctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev\nupdate_config=1\n\nnetwork={{\n    ssid="{ssid}"\n    psk="{psk}"\n}}\n"""
     
     try:
+        # Salva em um arquivo temporário e move com sudo (para garantir permissão)
         tmp_path = "/tmp/wpa_supplicant.conf"
         with open(tmp_path, "w") as f:
             f.write(config_content)
         subprocess.run(['sudo', 'mv', tmp_path, '/etc/wpa_supplicant/wpa_supplicant.conf'], check=True)
         subprocess.run(['sudo', 'wpa_cli', '-i', 'wlan0', 'reconfigure'], check=True)
-        flash(f"Wi-Fi configurado para '{ssid}'. Tentando conectar...", 'wifi_success')
+        flash(f"Wi-Fi configurado para '{ssid}'. Tentando conectar...", 'success')
     except Exception as e:
-        flash(f"Erro ao salvar Wi-Fi: {e}", 'wifi_error')
-    return redirect('/')
+        flash(f"Erro ao salvar Wi-Fi: {e}", 'error')
+    return jsonify({'message': 'Configuração Wi-Fi enviada. O painel tentará reconectar.', 'status': 'info'})
 
-@app.route('/pixelart/<filename>')
-def serve_pixelart(filename):
-    return send_from_directory(PIXELART_FOLDER, filename)
+# --- ROTAS DE API E SISTEMA ---
+
+@app.route('/api/status')
+def api_status():
+    """Retorna status do hardware (CPU, RAM, Disco)"""
+    return jsonify(get_sys_metrics())
 
 @app.route('/upload_gif', methods=['POST'])
 def upload_gif():
-    if 'file' not in request.files:
-        flash('Nenhum arquivo selecionado.', 'gallery_error')
-        return redirect('/')
-    
+    if 'file' not in request.files: return redirect('/')
     file = request.files['file']
-    if file.filename == '':
-        flash('Nenhum arquivo selecionado.', 'gallery_error')
-        return redirect('/')
-        
+    if file.filename == '': return redirect('/')
+    
     if file and file.filename.lower().endswith('.gif'):
         filename = secure_filename(file.filename)
-        if not os.path.exists(PIXELART_FOLDER):
-            os.makedirs(PIXELART_FOLDER)
-        file.save(os.path.join(PIXELART_FOLDER, filename))
-        fix_file_ownership(os.path.join(PIXELART_FOLDER, filename))
-        flash(f'GIF "{filename}" enviado com sucesso!', 'gallery_success')
-    else:
-        flash('Apenas arquivos .gif são permitidos.', 'gallery_error')
+        if not os.path.exists(PIXELART_FOLDER): os.makedirs(PIXELART_FOLDER)
         
-    return redirect('/')
+        save_path = os.path.join(PIXELART_FOLDER, filename)
+        file.save(save_path)
+        try: os.chmod(save_path, 0o666) # Permite editar via SFTP depois
+        except: pass
+        
+        return jsonify({'message': f'GIF "{filename}" enviado!', 'status': 'success'})
+    else:
+        return jsonify({'message': 'Apenas arquivos .gif são permitidos.', 'status': 'error'})
 
 @app.route('/delete_gif/<filename>')
 def delete_gif(filename):
     try:
-        os.remove(os.path.join(PIXELART_FOLDER, secure_filename(filename)))
-        flash(f'GIF "{filename}" removido.', 'gallery_success')
-    except Exception as e:
-        flash(f'Erro ao remover: {e}', 'gallery_error')
-    return redirect('/')
+        filename = secure_filename(filename)
+        path = os.path.join(PIXELART_FOLDER, filename)
+        if os.path.exists(path):
+            os.remove(path)
+            return jsonify({'message': 'GIF removido.', 'status': 'success'})
+    except: pass
+    return jsonify({'message': 'Erro ao remover GIF.', 'status': 'error'})
 
-@app.route('/logs')
-def ver_logs():
-    """Lê os logs do sistema e exibe em uma página simples"""
-    try:
-        output = subprocess.check_output(['sudo', 'journalctl', '-u', 'crypto.service', '-n', '100', '--no-pager']).decode('utf-8')
-    except Exception as e:
-        output = f"Erro ao ler logs: {e}"
+@app.route('/search_gif')
+def search_gif():
+    query = request.args.get('q', '')
+    pos = request.args.get('pos', '')
+    if not query: return jsonify({'results': [], 'next': ''})
     
-    return output, 200, {'Content-Type': 'text/plain; charset=utf-8'}
-
-@app.route('/measure_speed')
-def measure_speed():
-    """Mede Ping e Download"""
-    ping = "..."
+    # Proxy para Tenor API
     try:
-        t0 = time.time()
-        requests.get('http://1.1.1.1', timeout=2)
-        ping = f"{int((time.time() - t0) * 1000)}ms"
-    except: ping = "Err"
-    
-    dl = "..."
-    try:
-        t0 = time.time()
-        r = requests.get('http://speedtest.tele2.net/1MB.zip', timeout=5)
-        dt = time.time() - t0
-        size_bits = len(r.content) * 8
-        speed_mbps = (size_bits / dt) / 1_000_000
-        dl = f"{speed_mbps:.1f} Mbps"
-    except: dl = "Err"
-    
-    return jsonify({'ping': ping, 'download': dl})
+        url = f"https://g.tenor.com/v1/search?q={query}&key=LIVDSRZULELA&limit=8&media_filter=minimal"
+        if pos: url += f"&pos={pos}"
+        
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            results = []
+            for item in data.get('results', []):
+                media = item['media'][0]['tinygif']
+                results.append({'name': item.get('content_description', 'gif'), 'url': media['url'], 'preview': media['preview']})
+            return jsonify({'results': results, 'next': data.get('next', '')})
+    except: pass
+    return jsonify({'results': [], 'next': ''})
 
 @app.route('/download_gif', methods=['POST'])
 def download_gif():
     url = request.form.get('url')
-    name = request.form.get('name')
+    name = request.form.get('name', 'download')
+    if not url: return redirect('/')
     
-    if not url or not name:
-        flash('Erro: URL ou nome inválido.', 'gallery_error')
-        return redirect('/')
-        
     try:
         r = requests.get(url, timeout=10)
         if r.status_code == 200:
             filename = secure_filename(f"{name}.gif")
-            with open(os.path.join(PIXELART_FOLDER, filename), 'wb') as f:
-                f.write(r.content)
-            fix_file_ownership(os.path.join(PIXELART_FOLDER, filename))
-            flash(f'GIF "{filename}" baixado com sucesso!', 'gallery_success')
-        else:
-            flash('Erro ao baixar imagem (Status code inválido).', 'gallery_error')
-    except Exception as e:
-        flash(f'Erro no download: {e}', 'gallery_error')
-        
-    return redirect('/')
-
-@app.route('/api/search_tenor')
-def search_tenor():
-    query = request.args.get('q', 'pixel art')
-    pos = request.args.get('pos', '') # Parâmetro de paginação
-    apikey = "LIVDSRZULELA" 
-    lmt = 12
-    
-    search_term = f"{query} pixel art"
-    
-    try:
-        url = f"https://g.tenor.com/v1/search?q={search_term}&key={apikey}&limit={lmt}&contentfilter=medium&ar_range=standard"
-        if pos:
-            url += f"&pos={pos}"
+            if not filename.lower().endswith('.gif'): filename += ".gif"
+            if not os.path.exists(PIXELART_FOLDER): os.makedirs(PIXELART_FOLDER)
             
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            results = json.loads(r.content)
-            gifs = [{'name': item['content_description'], 'url': item['media'][0]['tinygif']['url']} for item in results['results']]
-            return jsonify({'results': gifs, 'next': results.get('next', '')})
+            save_path = os.path.join(PIXELART_FOLDER, filename)
+            with open(save_path, 'wb') as f: f.write(r.content)
+            try: os.chmod(save_path, 0o666)
+            except: pass
+            return jsonify({'message': 'GIF baixado com sucesso!', 'status': 'success'})
+    except Exception as e:
+        return jsonify({'message': f'Erro no download: {e}', 'status': 'error'})
+
+@app.route('/pixelart/<path:filename>')
+@app.route('/images/pixelart/<path:filename>')
+def serve_pixelart(filename):
+    return send_from_directory(PIXELART_FOLDER, filename)
+
+@app.route('/measure_speed')
+def measure_speed():
+    ping = "Err"
+    dl = "--"
+    try:
+        # Ping Google DNS (1 pacote, timeout 1s)
+        out = subprocess.check_output(['ping', '-c', '1', '-W', '1', '8.8.8.8'], stderr=subprocess.STDOUT).decode()
+        if 'time=' in out:
+            t = out.split('time=')[1].split(' ')[0]
+            ping = f"{int(float(t))}ms"
     except: pass
-    return jsonify({'results': [], 'next': ''})
-
-
-@app.route('/atualizar', methods=['GET', 'POST'])
-def atualizar_app():
+    
     try:
-        print(">> Iniciando atualizacao do sistema...")
-        repo_dir = cfg.BASE_DIR
-        
-        # Configura git para permitir operacoes como root em pasta de usuario
-        subprocess.run(['git', 'config', '--global', '--add', 'safe.directory', repo_dir], check=False)
-        
-        try:
-            subprocess.run(['git', 'pull'], cwd=repo_dir, check=True)
-        except:
-            print(">> Git pull falhou. Tentando reparar repositorio...")
-            repo_url = "https://github.com/Tauser/bitDev.git"
-            
-            if not os.path.exists(os.path.join(repo_dir, ".git")):
-                subprocess.run(['git', 'init'], cwd=repo_dir, check=True)
-            
-            subprocess.run(['git', 'remote', 'remove', 'origin'], cwd=repo_dir, check=False)
-            subprocess.run(['git', 'remote', 'add', 'origin', repo_url], cwd=repo_dir, check=True)
-            subprocess.run(['git', 'fetch', '--all'], cwd=repo_dir, check=True)
-            
-            try:
-                subprocess.run(['git', 'reset', '--hard', 'origin/main'], cwd=repo_dir, check=True)
-            except:
-                subprocess.run(['git', 'reset', '--hard', 'origin/master'], cwd=repo_dir, check=True)
+        # Download teste (500KB via Cloudflare)
+        start = time.time()
+        requests.get("https://speed.cloudflare.com/__down?bytes=500000", timeout=5)
+        duration = time.time() - start
+        if duration > 0.01:
+            speed = 4.0 / duration # 4 Megabits / tempo
+            dl = f"{speed:.1f} Mbps"
+    except: pass
+    
+    return jsonify({'ping': ping, 'download': dl})
 
-        subprocess.run(['sudo', 'systemctl', 'restart', 'crypto.service'], check=True)
-        flash("Sistema atualizado e reiniciado com sucesso!", 'success')
+@app.route('/logs')
+def get_logs():
+    try:
+        # Busca os ultimos 100 logs do servico
+        out = subprocess.check_output(['journalctl', '-u', 'crypto.service', '-n', '100', '--no-pager']).decode()
+        return out
     except Exception as e:
-        flash(f"Erro ao atualizar: {e}", 'error')
-    return redirect('/')
+        return f"Erro ao buscar logs: {e}"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

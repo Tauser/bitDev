@@ -29,7 +29,7 @@ def iniciar_web():
     try:
         web_app.app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
     except Exception as e:
-        print(f"Erro no servidor web: {e}")
+        print(f"CRITICO: Erro ao iniciar servidor web (Porta 5000 ocupada?): {e}")
 
 print(">> Lançando Painel Web...")
 threading.Thread(target=iniciar_web, daemon=True).start()
