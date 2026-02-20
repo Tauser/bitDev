@@ -13,7 +13,6 @@ def garantir_cor(cor):
     return cor
 
 def processar_frame_inteligente(frame, box_w, box_h):
-    """Redimensiona mantendo proporção e centraliza com fundo preto."""
     img = frame.convert("RGBA")
     src_w, src_h = img.size
     
@@ -62,7 +61,6 @@ def fade_transition(matrix, target_brightness, speed=4):
     matrix.brightness = target_brightness
 
 def executar_matrix_rain(canvas, matrix):
-    """Animação de Boot que espera os dados carregarem."""
     print("Iniciando Boot e aguardando dados...")
     
     cor_texto = garantir_cor(cfg.C_TEAL)
@@ -89,7 +87,6 @@ def executar_matrix_rain(canvas, matrix):
     while True:
         canvas.Clear()
         
-        # Logo "Gordinho" (Bold 2x2)
         txt = "BITDEV"
         font = cfg.font_l
         w = sum(font.CharacterWidth(ord(c)) for c in txt)

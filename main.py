@@ -15,7 +15,6 @@ from pages import dashboard, bolsa, galeria, impressora, clima
 import utils
 
 def sd_notify(msg):
-    """Envia notificação para o systemd (Watchdog)"""
     sock = os.environ.get("NOTIFY_SOCKET")
     if not sock: return
     try:
@@ -44,7 +43,6 @@ indice_playlist = 0
 ultimo_checkpoint = time.time()
 
 def obter_playlist_ativa():
-    """Lê o JSON e retorna apenas as páginas ativadas"""
     try:
         path = os.path.join(cfg.BASE_DIR, 'user_config.json')
         if os.path.exists(path):
@@ -65,41 +63,31 @@ playlist_atual = obter_playlist_ativa()
 def realizar_transicao_fade():
     global indice_playlist, ultimo_checkpoint, playlist_atual
     
-    # 1. Carrega nova playlist para verificar mudanças
     nova_playlist = obter_playlist_ativa()
     if not nova_playlist: nova_playlist = [{"id": "DASHBOARD", "tempo": 10}]
     
-    # Identifica ID da tela atual com segurança
     id_atual = ""
     if indice_playlist < len(playlist_atual):
         id_atual = playlist_atual[indice_playlist]["id"]
     
-    # 2. Inicia Fade Out
     animations.fade_transition(matrix, 0, cfg.FADE_SPEED)
     
-    # 3. CRÍTICO: Limpa a tela e atualiza o hardware PARA O PRETO antes de processar a próxima
-    # Isso evita que a tela antiga fique "travada" ou "tremendo" enquanto a próxima carrega
     canvas.Clear()
     canvas = matrix.SwapOnVSync(canvas)
     
-    # Atualiza playlist oficial
     playlist_atual = nova_playlist
     
-    # Garante índice válido antes de procurar a próxima
     if indice_playlist >= len(playlist_atual): 
         indice_playlist = 0
     
-    # 4. Encontra a próxima tela válida
     proximo_idx = indice_playlist
     proxima_tela = None
     
-    # Tenta encontrar a próxima tela válida na sequência
     for i in range(1, len(playlist_atual) + 1):
         idx = (indice_playlist + i) % len(playlist_atual)
         cand = playlist_atual[idx]
         pid = cand["id"]
         
-        # Filtros de Hardware
         if pid == "IMPRESSORA" and not data.dados['status'].get('printer', False): continue
         if pid == "BOLSA" and not data.dados['status'].get('stocks', False): continue
         
@@ -113,7 +101,6 @@ def realizar_transicao_fade():
     
     indice_playlist = proximo_idx
     
-    # 5. Inicializa a nova tela (Agora seguro, pois a tela já está preta)
     if proxima_tela["id"] == "GALERIA":
         galeria.sortear_novo()
     elif proxima_tela["id"] == "DASHBOARD":
@@ -121,7 +108,6 @@ def realizar_transicao_fade():
     
     ultimo_checkpoint = time.time()
     
-    # 6. Fade In
     brilho_alvo = data.dados.get('brilho', 70)
     animations.fade_transition(matrix, brilho_alvo, cfg.FADE_SPEED)
 

@@ -26,26 +26,21 @@ options.limit_refresh_rate_hz = 60
 options.pixel_mapper_config = "Rotate:180"
 
 try:
-    # Fonte Pequena (Padrão do sistema)
     font_s = graphics.Font()
     font_s.LoadFont(os.path.join(BASE_DIR, "fonts/4x6.bdf"))
     
-    # Fonte Média
     font_m = graphics.Font()
     font_m.LoadFont(os.path.join(BASE_DIR, "fonts/5x8.bdf"))
     
-    # Fonte Grande
     font_l = graphics.Font()
     font_l.LoadFont(os.path.join(BASE_DIR, "fonts/6x10.bdf"))
     
-    # Fonte Extra Grande (Para temperatura)
     font_xl = graphics.Font()
     try:
         font_xl.LoadFont(os.path.join(BASE_DIR, "fonts/10x20.bdf"))
     except:
         font_xl = font_l
 
-    # Fonte Minúscula (Para detalhes)
     font_t = graphics.Font()
     try:
         font_t.LoadFont(os.path.join(BASE_DIR, "fonts/4x6.bdf"))

@@ -29,7 +29,6 @@ dados = {
     'weather': {'temp': 0, 'min': 0, 'max': 0, 'humidity': 0, 'wind': 0, 'code': 0, 'uv': 0, 'feels_like': 0, 'hourly_temps': [], 'is_day': 1, 'pop': 0}
 }
 
-# Variaveis de controle de conexao da impressora
 _printer_cached_url = None
 _printer_fail_count = 0
 _printer_query_keys = []
@@ -85,7 +84,6 @@ def carregar_config():
                         dados['moedas_ativas'] = clean_list
                         alterou_moedas = True
                 
-                # Lógica para Coordenadas Manuais
                 if config.get('manual_coords'):
                     dados['lat'] = config.get('lat')
                     dados['lon'] = config.get('lon')
@@ -93,7 +91,6 @@ def carregar_config():
                     dados['using_manual'] = True
                 else:
                     dados['manual_coords'] = False
-                    # Se estava usando manual e desligou, limpa para forçar geocoding da cidade
                     if dados.get('using_manual'):
                         dados.pop('lat', None)
                         dados.pop('lon', None)
@@ -103,7 +100,6 @@ def carregar_config():
     return alterou_moedas
 
 def check_internet():
-    """Verifica se há conexão real com a internet (Google)"""
     try:
         requests.get("http://clients3.google.com/generate_204", timeout=2)
         return True
@@ -111,7 +107,6 @@ def check_internet():
         return False
 
 def get_local_ip():
-    """Retorna o IP local da máquina"""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.settimeout(0.1)
@@ -123,7 +118,6 @@ def get_local_ip():
     return IP
 
 def get_wifi_signal():
-    """Lê a força do sinal Wi-Fi (dBm)"""
     try:
         with open("/proc/net/wireless", "r") as f:
             for line in f:
@@ -133,7 +127,6 @@ def get_wifi_signal():
     return 0
 
 def save_debug_info():
-    """Salva status na partição de boot para leitura no Windows"""
     try:
         if os.path.exists("/boot"):
             path = "/boot/bitdev_status.txt"
@@ -160,13 +153,11 @@ def save_debug_info():
         print(f"Erro ao salvar debug: {e}")
 
 def add_notification(msg, color=None, duration=15):
-    """Adiciona uma notificação temporária ao rodapé"""
     if color is None: color = cfg.C_WHITE
     expire = time.time() + duration
     dados['notifications'].append({'msg': msg, 'expires': expire, 'color': color})
 
 def get_active_notification():
-    """Retorna a notificação mais recente e limpa as expiradas"""
     now = time.time()
     dados['notifications'] = [n for n in dados['notifications'] if n['expires'] > now]
     if dados['notifications']:
@@ -174,7 +165,6 @@ def get_active_notification():
     return None
 
 def fetch_btc_only():
-    """Busca APENAS o Bitcoin (Muito Rápido)"""
     global dados
     try:
         url = "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"
@@ -198,7 +188,6 @@ def fetch_btc_only():
             dados['conexao'] = False
 
 def fetch_secondary_coins():
-    """Busca as outras moedas (Mais Lento)"""
     global dados
     temp_list = []
     
@@ -218,7 +207,6 @@ def fetch_secondary_coins():
     dados['secondary'] = temp_list
 
 def fetch_extras():
-    """Dólar e Fear & Greed"""
     global dados
     try:
         r = requests.get("https://economia.awesomeapi.com.br/last/USD-BRL", timeout=2).json()
@@ -232,13 +220,9 @@ def fetch_extras():
     except: pass
 
 def ler_temperatura():
-    """Clima da Cidade (Via Open-Meteo - Mais rápido)"""
     global dados
     cidade = dados.get('cidade', 'Sao_Paulo')
     
-    # 1. Resolve Latitude/Longitude se necessário (Cache na memória)
-    # Isso evita chamar a API de geocoding toda vez, tornando muito rápido
-    # Pula se estiver usando coordenadas manuais
     if not dados.get('manual_coords', False):
         if dados.get('_cached_city') != cidade or 'lat' not in dados:
             try:
@@ -255,7 +239,6 @@ def ler_temperatura():
                     dados['_cached_city'] = cidade
             except: pass
 
-    # 2. Busca Temperatura usando Lat/Lon
     if 'lat' in dados:
         try:
             url = "https://api.open-meteo.com/v1/forecast"
@@ -270,8 +253,6 @@ def ler_temperatura():
             r = requests.get(url, params=params, timeout=3)
             weather_data = r.json()
             
-            # Calcula a hora local da cidade baseada no offset da API
-            # Isso corrige divergências se o Raspberry Pi estiver com hora errada/UTC
             utc_offset = weather_data.get('utc_offset_seconds', 0)
             local_hour = time.gmtime(time.time() + utc_offset).tm_hour
             
@@ -291,7 +272,6 @@ def ler_temperatura():
             
             if hourly:
                 if 'uv_index' in hourly:
-                    # Garante índice válido (0-23)
                     idx = max(0, min(23, local_hour))
                     dados['weather']['uv'] = hourly['uv_index'][idx]
                 if 'temperature_2m' in hourly:
@@ -304,7 +284,6 @@ def ler_temperatura():
         except: pass
 
 def fetch_stocks():
-    """Busca IBOVESPA e S&P 500 (Yahoo Finance)"""
     global dados
     headers = {'User-Agent': 'Mozilla/5.0'}
     
@@ -320,12 +299,11 @@ def fetch_stocks():
             dados['status']['stocks'] = True
         except: pass
 
-    get_ticker('^BVSP', 'ibov', 'ibov_var')   # Ibovespa
-    get_ticker('^GSPC', 'sp500', 'sp500_var') # S&P 500
-    get_ticker('^IXIC', 'nasdaq', 'nasdaq_var') # Nasdaq (Tech)
+    get_ticker('^BVSP', 'ibov', 'ibov_var')
+    get_ticker('^GSPC', 'sp500', 'sp500_var')
+    get_ticker('^IXIC', 'nasdaq', 'nasdaq_var')
 
 def fetch_printer_data():
-    """Busca dados do Klipper/Moonraker"""
     global dados, _printer_cached_url, _printer_fail_count, _printer_query_keys, _printer_current_file, _printer_file_metadata
     raw_ip = dados.get('printer_ip', '').strip()
     
@@ -334,10 +312,8 @@ def fetch_printer_data():
         dados['status']['printer'] = False
         return
 
-    # Limpeza do IP (remove http:// se usuario colocou)
     ip = raw_ip.replace("http://", "").replace("https://", "").rstrip("/")
     
-    # Lista de candidatos (Prioriza a ultima URL que funcionou)
     candidates = []
     if _printer_cached_url and ip in _printer_cached_url:
         candidates.append(_printer_cached_url)
@@ -353,15 +329,12 @@ def fetch_printer_data():
     
     for base_url in candidates:
         try:
-            # 1. Descobre objetos disponíveis (se ainda não tiver cache)
             if not _printer_query_keys:
                 try:
                     r_list = requests.get(f"{base_url}/printer/objects/list", timeout=2)
                     if r_list.status_code == 200:
                         all_objs = r_list.json().get('result', {}).get('objects', [])
-                        # Objetos padrão
                         keys = ['print_stats', 'display_status', 'extruder', 'heater_bed', 'fan', 'toolhead', 'gcode_move', 'quad_gantry_level']
-                        # Adiciona sensores extras (Chamber, etc)
                         for obj in all_objs:
                             if obj.startswith('temperature_sensor') or \
                                obj.startswith('temperature_fan') or \
@@ -369,33 +342,28 @@ def fetch_printer_data():
                                 keys.append(obj)
                         _printer_query_keys = keys
                 except: pass
-            
-            # Fallback se a lista falhar
+
             q_keys = _printer_query_keys if _printer_query_keys else ['print_stats', 'display_status', 'extruder', 'heater_bed', 'fan', 'toolhead', 'gcode_move', 'quad_gantry_level']
             
-            # Query objects
             url = f"{base_url}/printer/objects/query?" + "&".join(q_keys)
             r = requests.get(url, timeout=2)
             if r.status_code == 200:
                 try:
-                    # Valida se é JSON válido do Moonraker antes de aceitar
                     val = r.json()
                     if 'result' in val:
                         r_json = val
                         success = True
-                        _printer_cached_url = base_url # Memoriza a porta certa
-                        _printer_fail_count = 0        # Zera contador de erro
+                        _printer_cached_url = base_url
+                        _printer_fail_count = 0
                         break
                 except: pass
         except: continue
     
     if not success or not r_json:
         _printer_fail_count += 1
-        # Se falhou, limpa o cache para forçar redescobrir a porta na proxima
         if _printer_cached_url: _printer_cached_url = None
-        _printer_query_keys = [] # Força recarregar lista de objetos
-            
-        # Só marca OFFLINE se falhar 5 vezes seguidas (aprox 10 segundos)
+        _printer_query_keys = []
+
         if _printer_fail_count >= 5:
             dados['printer']['state'] = 'OFFLINE'
             dados['status']['printer'] = False
@@ -403,8 +371,6 @@ def fetch_printer_data():
 
     try:
         res = r_json.get('result', {}).get('status', {})
-        
-        # Garante leitura segura (mesmo se faltar sensor)
         p_stats = res.get('print_stats', {})
         disp    = res.get('display_status', {})
         ext     = res.get('extruder', {})
@@ -413,13 +379,11 @@ def fetch_printer_data():
         tool    = res.get('toolhead', {})
         move    = res.get('gcode_move', {})
         
-        # --- Lógica de Metadados (Fallback para Layers) ---
         filename = p_stats.get('filename', '')
         if filename and filename != _printer_current_file:
             _printer_current_file = filename
             _printer_file_metadata = {}
             try:
-                # Tenta buscar metadados do arquivo para calcular layers
                 meta_url = f"{_printer_cached_url}/server/files/metadata?filename={filename}"
                 r_meta = requests.get(meta_url, timeout=1)
                 if r_meta.status_code == 200:
@@ -430,8 +394,6 @@ def fetch_printer_data():
             _printer_file_metadata = {}
 
         p_data = dados['printer']
-        
-        # Detecta mudança de estado para notificação
         current_state = p_stats.get('state', 'error')
         last_state = p_data.get('_last_state', '')
         
@@ -457,7 +419,6 @@ def fetch_printer_data():
         current_layer = info.get('current_layer')
         total_layer = info.get('total_layer')
         
-        # Se não veio do Klipper, tenta calcular via metadados
         if (not current_layer or not total_layer) and _printer_file_metadata:
             z_height = (tool.get('position') or [0,0,0])[2]
             layer_h = _printer_file_metadata.get('layer_height', 0)
@@ -506,7 +467,6 @@ def fetch_printer_data():
                 name = key.replace('heater_generic ', '')
                 p_data['sensors'][name] = val.get('temperature', 0)
         
-        # Movimento
         raw_pos = tool.get('position', [0,0,0])
         current_xyz = raw_pos[:3]
         last_xyz = p_data.get('_last_xyz', current_xyz)
@@ -514,8 +474,6 @@ def fetch_printer_data():
         p_data['is_moving'] = any(abs(c - l) > 0.5 for c, l in zip(current_xyz, last_xyz))
         p_data['_last_xyz'] = current_xyz
         
-        # --- Busca Estatísticas de Histórico (Odômetro) ---
-        # Fazemos isso apenas se estiver conectado, para não travar o loop principal
         try:
             h_url = f"{base_url}/server/history/totals"
             h_r = requests.get(h_url, timeout=1)

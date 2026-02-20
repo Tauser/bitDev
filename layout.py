@@ -7,7 +7,6 @@ import data
 pos_scroll = 64
 
 def draw_header(canv, title=None, text_color=cfg.C_TEAL):
-    """Desenha o cabeçalho. Se title for None, mostra Data/Temp/Hora."""
     for y in range(9): 
         graphics.DrawLine(canv, 0, y, 63, y, cfg.C_BG_HEADER)
     
@@ -17,12 +16,9 @@ def draw_header(canv, title=None, text_color=cfg.C_TEAL):
         graphics.DrawText(canv, cfg.font_s, 1, 6, text_color, time.strftime("%d/%m"))
         utils.draw_center(canv, cfg.font_s, 6, cfg.C_WHITE, f"{data.dados['temp']}\u00b0C")
         
-        # Wi-Fi Fraco (< -70 dBm)
         sig = data.dados.get('wifi_signal', 0)
         if sig < -70 and sig != 0:
-            # Desenha hora deslocada e ícone vermelho
             graphics.DrawText(canv, cfg.font_s, 39, 6, cfg.C_WHITE, time.strftime("%H:%M"))
-            # Ícone Barras (x=60)
             graphics.DrawLine(canv, 60, 5, 60, 2, cfg.C_RED); graphics.DrawLine(canv, 61, 5, 61, 3, cfg.C_RED); graphics.DrawLine(canv, 62, 5, 62, 4, cfg.C_RED)
         else:
             graphics.DrawText(canv, cfg.font_s, 44, 6, cfg.C_WHITE, time.strftime("%H:%M"))
@@ -30,7 +26,6 @@ def draw_header(canv, title=None, text_color=cfg.C_TEAL):
     graphics.DrawLine(canv, 0, 8, 63, 8, cfg.C_GREY)
 
 def draw_footer(canv):
-    """Desenha o rodapé com ticker de cotações"""
     global pos_scroll
     
     graphics.DrawLine(canv, 0, 58, 63, 58, cfg.C_GREY)
