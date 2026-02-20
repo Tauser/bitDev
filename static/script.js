@@ -15,7 +15,7 @@ function showToast(message, type = "info") {
 }
 
 // --- FUNÇÕES GENÉRICAS DE AÇÃO ---
-function submitForm(event, url, formElement = null) {
+function submitForm(event, url, formElement = null, shouldReload = false) {
   if (event) event.preventDefault();
   const form = formElement || event.target;
   const formData = new FormData(form);
@@ -35,6 +35,9 @@ function submitForm(event, url, formElement = null) {
       // Se a resposta for JSON com mensagem
       if (data && data.message) {
         showToast(data.message, data.status || "success");
+        if (shouldReload && data.status === "success") {
+          setTimeout(() => window.location.reload(), 1000);
+        }
       } else {
         // Fallback se não houver JSON (ex: reload da página)
         // showToast('Ação realizada com sucesso!', 'success');
@@ -43,6 +46,63 @@ function submitForm(event, url, formElement = null) {
       }
     })
     .catch((err) => showToast("Erro ao processar ação: " + err, "error"));
+}
+
+function uploadGif(event) {
+  event.preventDefault();
+  const form = event.target;
+  const formData = new FormData(form);
+  const fileInput = form.querySelector('input[type="file"]');
+
+  if (fileInput.files.length === 0) return;
+
+  const progressBarContainer = document.getElementById(
+    "upload-progress-container",
+  );
+  const progressBarFill = document.getElementById("upload-progress-fill");
+  const progressText = document.getElementById("upload-progress-text");
+  const submitBtn = form.querySelector('button[type="submit"]');
+
+  progressBarContainer.style.display = "block";
+  progressBarFill.style.width = "0%";
+  progressText.innerText = "0%";
+  submitBtn.disabled = true;
+  submitBtn.style.opacity = "0.5";
+
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/upload_gif", true);
+
+  xhr.upload.onprogress = function (e) {
+    if (e.lengthComputable) {
+      const percentComplete = (e.loaded / e.total) * 100;
+      progressBarFill.style.width = percentComplete + "%";
+      progressText.innerText = Math.round(percentComplete) + "%";
+    }
+  };
+
+  xhr.onload = function () {
+    submitBtn.disabled = false;
+    submitBtn.style.opacity = "1";
+
+    if (xhr.status === 200) {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        showToast(data.message, data.status);
+        if (data.status === "success") {
+          setTimeout(() => window.location.reload(), 1000);
+        }
+      } catch (e) {
+        showToast("Erro ao processar resposta.", "error");
+      }
+    } else {
+      showToast("Erro no upload: " + xhr.statusText, "error");
+    }
+    setTimeout(() => {
+      progressBarContainer.style.display = "none";
+    }, 3000);
+  };
+
+  xhr.send(formData);
 }
 
 // --- MODAL DE CONFIRMAÇÃO PERSONALIZADA ---
@@ -248,6 +308,90 @@ if (coinList) {
   }
 }
 
+function savePlaylist(event) {
+  event.preventDefault();
+  const list = document.getElementById("playlist-list");
+  const items = list.querySelectorAll(".playlist-item");
+  const pages = [];
+
+  items.forEach((item) => {
+    const id = item.getAttribute("data-id");
+    const enabled = item.querySelector('input[type="checkbox"]').checked;
+    const tempo = item.querySelector('input[type="number"]').value;
+    pages.push({ id: id, enabled: enabled, tempo: tempo });
+  });
+
+  fetch("/salvar_playlist", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pages: pages }),
+  })
+    .then((r) => r.json())
+    .then((data) => showToast(data.message, data.status))
+    .catch((e) => showToast("Erro: " + e, "error"));
+}
+
+function getCurrentLocation() {
+  if (!navigator.geolocation) {
+    showToast("Geolocalização não suportada.", "error");
+    return;
+  }
+
+  const btn = document.getElementById("btn-location");
+  const icon = btn.querySelector("i");
+  const originalClass = icon.className;
+
+  icon.className = "fa-solid fa-spinner fa-spin";
+  btn.disabled = true;
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const lat = position.coords.latitude;
+      const lon = position.coords.longitude;
+
+      // Usa Nominatim (OpenStreetMap) para obter a cidade a partir das coordenadas
+      fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`,
+      )
+        .then((r) => r.json())
+        .then((data) => {
+          const addr = data.address;
+          const city =
+            addr.city ||
+            addr.town ||
+            addr.village ||
+            addr.municipality ||
+            addr.county;
+          if (city) {
+            document.querySelector('input[name="cidade"]').value = city;
+            showToast(`Localização: ${city}`, "success");
+          } else showToast("Cidade não encontrada.", "warning");
+        })
+        .catch(() => showToast("Erro ao buscar endereço.", "error"))
+        .finally(() => {
+          icon.className = originalClass;
+          btn.disabled = false;
+        });
+    },
+    (err) => {
+      // Fallback: Tenta obter localização via IP (útil para HTTP onde GPS é bloqueado)
+      fetch("http://ip-api.com/json")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data && data.city) {
+            document.querySelector('input[name="cidade"]').value = data.city;
+            showToast(`Localização (IP): ${data.city}`, "warning");
+          } else showToast("Erro GPS: " + err.message, "error");
+        })
+        .catch(() => showToast("Erro GPS: " + err.message, "error"))
+        .finally(() => {
+          icon.className = originalClass;
+          btn.disabled = false;
+        });
+    },
+  );
+}
+
 document.addEventListener("DOMContentLoaded", function () {
   // Atualiza status do sistema (CPU/RAM) a cada 5s
   // (Movido para o topo para garantir execução mesmo se houver erro no Chart.js)
@@ -297,6 +441,15 @@ document.addEventListener("DOMContentLoaded", function () {
         pingEl.textContent = "Err";
         dlEl.textContent = "Err";
       });
+  }
+
+  const playlistList = document.getElementById("playlist-list");
+  if (playlistList && typeof Sortable !== "undefined") {
+    new Sortable(playlistList, {
+      animation: 150,
+      ghostClass: "sortable-ghost",
+      handle: ".handle", // Arrastar pelo ícone
+    });
   }
 });
 
@@ -353,7 +506,7 @@ function fetchTenorData() {
                 <div class="gif-card">
                     <img src="${item.url}" loading="lazy" />
                     <div class="gif-card-actions">
-                    <form action="/download_gif" method="POST" style="margin: 0">
+                    <form onsubmit="submitForm(event, '/download_gif', null, true)" style="margin: 0">
                         <input type="hidden" name="url" value="${item.url}" />
                         <input type="hidden" name="name" value="${item.name.replace(/[^a-zA-Z0-9]/g, "_")}" />
                         <button type="submit" class="btn btn-primary" style="padding: 4px 8px; font-size: 0.8rem; width: auto; height: auto;"><i class="fa-solid fa-download"></i></button>

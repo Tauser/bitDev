@@ -109,7 +109,10 @@
             </div>
             {% endfor %}
           </div>
-          <form onsubmit="submitForm(event, '/adicionar')" class="add-form">
+          <form
+            onsubmit="submitForm(event, '/adicionar', null, true)"
+            class="add-form"
+          >
             <input
               type="text"
               name="simbolo"
@@ -125,10 +128,14 @@
       <div id="Config" class="tab-content">
         <div class="card">
           <h3>Playlist de Telas</h3>
-          <form onsubmit="submitForm(event, '/salvar_playlist')">
-            <div class="playlist-list">
+          <form onsubmit="savePlaylist(event)">
+            <div class="playlist-list" id="playlist-list">
               {% for page in pages %}
-              <div class="playlist-item">
+              <div class="playlist-item" data-id="{{ page.id }}">
+                <i
+                  class="fa-solid fa-bars handle"
+                  style="color: #64748b; cursor: grab; margin-right: 10px"
+                ></i>
                 <label class="switch">
                   <input
                     type="checkbox"
@@ -157,6 +164,85 @@
             </div>
             <button type="submit" class="btn btn-primary full-width">
               Salvar Playlist
+            </button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h3>Meteorologia</h3>
+          <form onsubmit="submitForm(event, '/salvar_clima')">
+            <div class="form-group">
+              <label style="margin-bottom: 5px; display: block">Cidade</label>
+              <div style="display: flex; gap: 8px">
+                <input
+                  type="text"
+                  name="cidade"
+                  value="{{ cidade }}"
+                  placeholder="Ex: Sao Paulo, New York"
+                  list="cities-list"
+                  required
+                />
+                <button
+                  type="button"
+                  id="btn-location"
+                  class="btn btn-secondary"
+                  onclick="getCurrentLocation()"
+                  title="Usar localização atual"
+                >
+                  <i class="fa-solid fa-location-crosshairs"></i>
+                </button>
+              </div>
+              <datalist id="cities-list">
+                <option value="Sao Paulo">Brasil</option>
+                <option value="Rio de Janeiro">Brasil</option>
+                <option value="Belo Horizonte">Brasil</option>
+                <option value="Brasilia">Brasil</option>
+                <option value="Curitiba">Brasil</option>
+                <option value="Salvador">Brasil</option>
+                <option value="Fortaleza">Brasil</option>
+                <option value="Manaus">Brasil</option>
+                <option value="Recife">Brasil</option>
+                <option value="Porto Alegre">Brasil</option>
+                <option value="Florianopolis">Brasil</option>
+                <option value="New York">USA</option>
+                <option value="London">UK</option>
+                <option value="Tokyo">Japan</option>
+                <option value="Paris">France</option>
+                <option value="Berlin">Germany</option>
+                <option value="Lisbon">Portugal</option>
+                <option value="Madrid">Spain</option>
+                <option value="Rome">Italy</option>
+              </datalist>
+            </div>
+            <div class="form-group">
+              <label
+                style="
+                  margin-bottom: 5px;
+                  display: block;
+                  font-size: 0.9rem;
+                  color: #94a3b8;
+                "
+                >Coordenadas (Opcional - Substitui Cidade)</label
+              >
+              <div style="display: flex; gap: 10px">
+                <input
+                  type="text"
+                  name="latitude"
+                  value="{{ lat }}"
+                  placeholder="Lat (ex: -23.55)"
+                  style="width: 50%"
+                />
+                <input
+                  type="text"
+                  name="longitude"
+                  value="{{ lon }}"
+                  placeholder="Lon (ex: -46.63)"
+                  style="width: 50%"
+                />
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary full-width">
+              Salvar Cidade
             </button>
           </form>
         </div>
@@ -244,13 +330,37 @@
         <div class="card">
           <h3>Upload de GIF</h3>
           <form
-            onsubmit="submitForm(event, '/upload_gif')"
+            onsubmit="uploadGif(event)"
             enctype="multipart/form-data"
             class="upload-form"
           >
             <input type="file" name="file" accept=".gif" required />
             <button type="submit" class="btn btn-primary">Enviar</button>
           </form>
+
+          <div
+            id="upload-progress-container"
+            style="display: none; margin-top: 15px"
+          >
+            <div class="progress-bar">
+              <div
+                id="upload-progress-fill"
+                class="progress-fill system"
+                style="width: 0%"
+              ></div>
+            </div>
+            <div
+              style="
+                text-align: center;
+                font-size: 0.8rem;
+                margin-top: 5px;
+                color: #94a3b8;
+              "
+              id="upload-progress-text"
+            >
+              0%
+            </div>
+          </div>
         </div>
 
         <div class="card">

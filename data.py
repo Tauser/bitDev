@@ -24,12 +24,17 @@ dados = {
     'status': {'btc': False, 'stocks': False, 'printer': False},
     'stocks': {'ibov': 0, 'ibov_var': 0, 'sp500': 0, 'sp500_var': 0, 'nasdaq': 0, 'nasdaq_var': 0},
     'printer': {'state': 'OFF', 'progress': 0, 'ext_actual': 0, 'ext_target': 0, 'bed_actual': 0, 'bed_target': 0, 'z_height': 0, 'fan_speed': 0, 'print_duration': 0, 'total_duration': 0, 'filename': '', 'homed_axes': '', 'print_speed': 0, 'message': '', 'is_moving': False, 'sensors': {}, 'qgl_applied': False, 'position': [0,0,0], 'stats': {'total_time': 0, 'total_filament': 0, 'total_jobs': 0}},
-    'printer_name': 'VORON 2.4'
+    'printer_name': 'VORON 2.4',
+    'wifi_signal': 0,
+    'weather': {'temp': 0, 'min': 0, 'max': 0, 'humidity': 0, 'wind': 0, 'code': 0, 'uv': 0, 'feels_like': 0, 'hourly_temps': [], 'is_day': 1, 'pop': 0}
 }
 
 # Variaveis de controle de conexao da impressora
 _printer_cached_url = None
 _printer_fail_count = 0
+_printer_query_keys = []
+_printer_current_file = None
+_printer_file_metadata = {}
 
 def get_color(symbol):
     sym = symbol.upper()
@@ -79,6 +84,21 @@ def carregar_config():
                         print(f"--> Config: {clean_list}")
                         dados['moedas_ativas'] = clean_list
                         alterou_moedas = True
+                
+                # Lógica para Coordenadas Manuais
+                if config.get('manual_coords'):
+                    dados['lat'] = config.get('lat')
+                    dados['lon'] = config.get('lon')
+                    dados['manual_coords'] = True
+                    dados['using_manual'] = True
+                else:
+                    dados['manual_coords'] = False
+                    # Se estava usando manual e desligou, limpa para forçar geocoding da cidade
+                    if dados.get('using_manual'):
+                        dados.pop('lat', None)
+                        dados.pop('lon', None)
+                        dados['_cached_city'] = None
+                        dados['using_manual'] = False
         except: pass
     return alterou_moedas
 
@@ -101,6 +121,16 @@ def get_local_ip():
     except:
         IP = "127.0.0.1"
     return IP
+
+def get_wifi_signal():
+    """Lê a força do sinal Wi-Fi (dBm)"""
+    try:
+        with open("/proc/net/wireless", "r") as f:
+            for line in f:
+                if "wlan0" in line:
+                    return float(line.split()[3].replace('.', ''))
+    except: pass
+    return 0
 
 def save_debug_info():
     """Salva status na partição de boot para leitura no Windows"""
@@ -198,6 +228,7 @@ def fetch_extras():
     try:
         r = requests.get("https://api.alternative.me/fng/", timeout=2).json()
         dados['fg_val'] = int(r['data'][0]['value'])
+        dados['wifi_signal'] = get_wifi_signal()
     except: pass
 
 def ler_temperatura():
@@ -207,31 +238,69 @@ def ler_temperatura():
     
     # 1. Resolve Latitude/Longitude se necessário (Cache na memória)
     # Isso evita chamar a API de geocoding toda vez, tornando muito rápido
-    if dados.get('_cached_city') != cidade or 'lat' not in dados:
-        try:
-            cidade_query = cidade.replace('_', ' ') # Troca Sao_Paulo por Sao Paulo
-            geo_url = "https://geocoding-api.open-meteo.com/v1/search"
-            params = {'name': cidade_query, 'count': 1, 'language': 'pt', 'format': 'json'}
-            
-            r = requests.get(geo_url, params=params, timeout=3)
-            geo_data = r.json()
-            
-            if geo_data.get('results'):
-                dados['lat'] = geo_data['results'][0]['latitude']
-                dados['lon'] = geo_data['results'][0]['longitude']
-                dados['_cached_city'] = cidade
-        except: pass
+    # Pula se estiver usando coordenadas manuais
+    if not dados.get('manual_coords', False):
+        if dados.get('_cached_city') != cidade or 'lat' not in dados:
+            try:
+                cidade_query = cidade.replace('_', ' ') # Troca Sao_Paulo por Sao Paulo
+                geo_url = "https://geocoding-api.open-meteo.com/v1/search"
+                params = {'name': cidade_query, 'count': 1, 'language': 'pt', 'format': 'json'}
+                
+                r = requests.get(geo_url, params=params, timeout=3)
+                geo_data = r.json()
+                
+                if geo_data.get('results'):
+                    dados['lat'] = geo_data['results'][0]['latitude']
+                    dados['lon'] = geo_data['results'][0]['longitude']
+                    dados['_cached_city'] = cidade
+            except: pass
 
     # 2. Busca Temperatura usando Lat/Lon
     if 'lat' in dados:
         try:
             url = "https://api.open-meteo.com/v1/forecast"
-            params = {'latitude': dados['lat'], 'longitude': dados['lon'], 'current': 'temperature_2m'}
+            params = {
+                'latitude': dados['lat'], 
+                'longitude': dados['lon'], 
+                'current': 'temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,apparent_temperature,is_day',
+                'hourly': 'uv_index,temperature_2m',
+                'daily': 'temperature_2m_max,temperature_2m_min,precipitation_probability_max',
+                'timezone': 'auto'
+            }
             r = requests.get(url, params=params, timeout=3)
             weather_data = r.json()
             
-            temp = weather_data['current']['temperature_2m']
-            dados['temp'] = str(int(round(temp)))
+            # Calcula a hora local da cidade baseada no offset da API
+            # Isso corrige divergências se o Raspberry Pi estiver com hora errada/UTC
+            utc_offset = weather_data.get('utc_offset_seconds', 0)
+            local_hour = time.gmtime(time.time() + utc_offset).tm_hour
+            
+            curr = weather_data.get('current', {})
+            daily = weather_data.get('daily', {})
+            hourly = weather_data.get('hourly', {})
+            
+            if curr:
+                t = int(round(curr['temperature_2m']))
+                dados['temp'] = str(t)
+                dados['weather']['temp'] = t
+                dados['weather']['humidity'] = curr['relative_humidity_2m']
+                dados['weather']['wind'] = curr['wind_speed_10m']
+                dados['weather']['code'] = curr['weather_code']
+                dados['weather']['feels_like'] = int(round(curr.get('apparent_temperature', t)))
+                dados['weather']['is_day'] = curr.get('is_day', 1)
+            
+            if hourly:
+                if 'uv_index' in hourly:
+                    # Garante índice válido (0-23)
+                    idx = max(0, min(23, local_hour))
+                    dados['weather']['uv'] = hourly['uv_index'][idx]
+                if 'temperature_2m' in hourly:
+                    dados['weather']['hourly_temps'] = hourly['temperature_2m'][local_hour:local_hour+12]
+            
+            if daily:
+                dados['weather']['min'] = int(round(daily['temperature_2m_min'][0]))
+                dados['weather']['max'] = int(round(daily['temperature_2m_max'][0]))
+                dados['weather']['pop'] = int(round(daily['precipitation_probability_max'][0]))
         except: pass
 
 def fetch_stocks():
@@ -257,7 +326,7 @@ def fetch_stocks():
 
 def fetch_printer_data():
     """Busca dados do Klipper/Moonraker"""
-    global dados, _printer_cached_url, _printer_fail_count
+    global dados, _printer_cached_url, _printer_fail_count, _printer_query_keys, _printer_current_file, _printer_file_metadata
     raw_ip = dados.get('printer_ip', '').strip()
     
     if not raw_ip: 
@@ -284,8 +353,28 @@ def fetch_printer_data():
     
     for base_url in candidates:
         try:
+            # 1. Descobre objetos disponíveis (se ainda não tiver cache)
+            if not _printer_query_keys:
+                try:
+                    r_list = requests.get(f"{base_url}/printer/objects/list", timeout=2)
+                    if r_list.status_code == 200:
+                        all_objs = r_list.json().get('result', {}).get('objects', [])
+                        # Objetos padrão
+                        keys = ['print_stats', 'display_status', 'extruder', 'heater_bed', 'fan', 'toolhead', 'gcode_move', 'quad_gantry_level']
+                        # Adiciona sensores extras (Chamber, etc)
+                        for obj in all_objs:
+                            if obj.startswith('temperature_sensor') or \
+                               obj.startswith('temperature_fan') or \
+                               obj.startswith('heater_generic'):
+                                keys.append(obj)
+                        _printer_query_keys = keys
+                except: pass
+            
+            # Fallback se a lista falhar
+            q_keys = _printer_query_keys if _printer_query_keys else ['print_stats', 'display_status', 'extruder', 'heater_bed', 'fan', 'toolhead', 'gcode_move', 'quad_gantry_level']
+            
             # Query objects
-            url = f"{base_url}/printer/objects/query?print_stats&display_status&extruder&heater_bed&fan&toolhead&gcode_move&quad_gantry_level"
+            url = f"{base_url}/printer/objects/query?" + "&".join(q_keys)
             r = requests.get(url, timeout=2)
             if r.status_code == 200:
                 try:
@@ -304,6 +393,7 @@ def fetch_printer_data():
         _printer_fail_count += 1
         # Se falhou, limpa o cache para forçar redescobrir a porta na proxima
         if _printer_cached_url: _printer_cached_url = None
+        _printer_query_keys = [] # Força recarregar lista de objetos
             
         # Só marca OFFLINE se falhar 5 vezes seguidas (aprox 10 segundos)
         if _printer_fail_count >= 5:
@@ -323,6 +413,22 @@ def fetch_printer_data():
         tool    = res.get('toolhead', {})
         move    = res.get('gcode_move', {})
         
+        # --- Lógica de Metadados (Fallback para Layers) ---
+        filename = p_stats.get('filename', '')
+        if filename and filename != _printer_current_file:
+            _printer_current_file = filename
+            _printer_file_metadata = {}
+            try:
+                # Tenta buscar metadados do arquivo para calcular layers
+                meta_url = f"{_printer_cached_url}/server/files/metadata?filename={filename}"
+                r_meta = requests.get(meta_url, timeout=1)
+                if r_meta.status_code == 200:
+                    _printer_file_metadata = r_meta.json().get('result', {})
+            except: pass
+        elif not filename:
+            _printer_current_file = None
+            _printer_file_metadata = {}
+
         p_data = dados['printer']
         
         # Detecta mudança de estado para notificação
@@ -347,9 +453,29 @@ def fetch_printer_data():
         p_data['print_duration'] = p_stats.get('print_duration', 0)
         p_data['total_duration'] = p_stats.get('total_duration', 0)
         
-        info = p_stats.get('info', {})
-        p_data['layer'] = int(info.get('current_layer') or 0)
-        p_data['total_layers'] = int(info.get('total_layer') or 0)
+        info = p_stats.get('info') or {}
+        current_layer = info.get('current_layer')
+        total_layer = info.get('total_layer')
+        
+        # Se não veio do Klipper, tenta calcular via metadados
+        if (not current_layer or not total_layer) and _printer_file_metadata:
+            z_height = (tool.get('position') or [0,0,0])[2]
+            layer_h = _printer_file_metadata.get('layer_height', 0)
+            obj_h = _printer_file_metadata.get('object_height', 0)
+            first_layer_h = _printer_file_metadata.get('first_layer_height', layer_h)
+            
+            if layer_h > 0:
+                if not total_layer and obj_h > 0:
+                    total_layer = int(obj_h / layer_h)
+                
+                if not current_layer and z_height > 0:
+                    if z_height <= first_layer_h:
+                        current_layer = 1
+                    else:
+                        current_layer = 1 + int((z_height - first_layer_h) / layer_h)
+        
+        p_data['layer'] = int(current_layer or 0)
+        p_data['total_layers'] = int(total_layer or 0)
         
         p_data['ext_actual'] = ext.get('temperature', 0)
         p_data['ext_target'] = ext.get('target', 0)
@@ -372,6 +498,12 @@ def fetch_printer_data():
         for key, val in res.items():
             if key.startswith('temperature_sensor'):
                 name = key.replace('temperature_sensor ', '')
+                p_data['sensors'][name] = val.get('temperature', 0)
+            elif key.startswith('temperature_fan'):
+                name = key.replace('temperature_fan ', '')
+                p_data['sensors'][name] = val.get('temperature', 0)
+            elif key.startswith('heater_generic'):
+                name = key.replace('heater_generic ', '')
                 p_data['sensors'][name] = val.get('temperature', 0)
         
         # Movimento

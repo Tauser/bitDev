@@ -1,4 +1,5 @@
 import time
+import math
 import os
 from PIL import Image, ImageEnhance
 from rgbmatrix import graphics
@@ -29,10 +30,29 @@ class PrinterPage:
         p = data.dados['printer']
         state = str(p.get('state', 'OFFLINE')).upper()
         
+        # --- DEBUG: FORÇAR TELA DE IMPRESSÃO PARA EDIÇÃO ---
+        # state = 'PRINTING'
+        # # if p['ext_actual'] == 0: # Se não tiver dados reais, usa fictícios
+        # if True:
+        #     p = p.copy()
+        #     p['progress'] = 100
+        #     p['print_duration'] = 5430
+        #     p['total_duration'] = 8100
+        #     p['ext_actual'] = 240
+        #     p['bed_actual'] = 100
+        #     p['fan_speed'] = 100
+        #     p['layer'] = 215
+        #     p['total_layers'] = 400
+        #     p['speed_factor'] = 100
+        #     p['sensors'] = {'chamber': 45} # Simula sensor de câmara
+        #     p['z_height'] = 42.5
+        #     p['filename'] = "Voron_Cube_ABS.gcode"
+
+        
         if state in ['PRINTING', 'PAUSED']:
             self._draw_printing(canv, p, state)
         elif state == 'COMPLETE':
-            self._draw_simple_msg(canv, "SUCESSO", cfg.C_GREEN, self._fmt_time(p.get('print_duration', 0)))
+            self._draw_simple_msg(canv, "CONCLUIDO", cfg.C_GREEN, self._fmt_time(p.get('print_duration', 0)))
         elif state in ['ERROR', 'OFFLINE']:
             msg = "OFFLINE" if state == 'OFFLINE' else f"ERRO: {p.get('message', '')}"
             sub = "Conectando..." if state == 'OFFLINE' else ""
@@ -42,55 +62,165 @@ class PrinterPage:
 
     def _draw_printing(self, canv, p, state):
         # 1. HEADER: Status | Porcentagem
-        status_txt = "PRINTING" if state == "PRINTING" else "PAUSED"
+        status_txt = "IMPRIMINDO" if state == "PRINTING" else "PAUSADO"
         col_lbl = cfg.C_ORANGE if state == "PRINTING" else cfg.C_YELLOW
-        graphics.DrawText(canv, cfg.font_s, 1, 6, col_lbl, status_txt)
+        col_lbl = cfg.C_WHITE if state == "PRINTING" else cfg.C_YELLOW
+        utils.draw_center(canv, cfg.font_s, 6, col_lbl, status_txt)
         
-        pct_txt = f"{p.get('progress', 0):.0f}%"
-        w_pct = sum(cfg.font_s.CharacterWidth(ord(c)) for c in pct_txt)
-        graphics.DrawText(canv, cfg.font_s, 64 - w_pct, 6, cfg.C_WHITE, pct_txt)
-
-        # 2. BARRA DE PROGRESSO (Mais larga - 3px)
+        # Separador do Header
         graphics.DrawLine(canv, 0, 8, 63, 8, cfg.C_GREY)
-        graphics.DrawLine(canv, 0, 9, 63, 9, cfg.C_GREY)
-        graphics.DrawLine(canv, 0, 10, 63, 10, cfg.C_GREY)
-        
-        bar_w = int(64 * (p.get('progress', 0) / 100.0))
-        if bar_w > 0:
-            graphics.DrawLine(canv, 0, 8, bar_w, 8, cfg.C_GREEN)
-            graphics.DrawLine(canv, 0, 9, bar_w, 9, cfg.C_GREEN)
-            graphics.DrawLine(canv, 0, 10, bar_w, 10, cfg.C_GREEN)
 
-        # 3. TEMPOS
-        # Volta a usar o tempo total original do arquivo (mais estável)
+        progress = p.get('progress', 0)
+        
+        # Alternância (5s Dados / 5s Progresso Circular)
+        show_circle = int(time.time() / 5) % 2 == 0
+        
+        if show_circle:
+            # --- MODO 1: PROGRESSO CIRCULAR ---
+            cx, cy = 32, 23
+            radius = 13
+            
+            # Cor baseada no progresso (Cores frias/alegres)
+            if progress < 30: bar_col = cfg.C_BLUE
+            elif progress < 70: bar_col = cfg.C_TEAL
+            else: bar_col = cfg.C_GREEN
+            
+            # Efeito de Sucesso (100%) - Pulso Suave (Verde <-> Branco)
+            if progress >= 99:
+                val = int((math.sin(time.time() * 5) + 1) * 127.5) # Oscila 0-255
+                bar_col = graphics.Color(val, 255, val)
+
+            # Desenha círculo de fundo (dim)
+            for angle in range(0, 360, 15):
+                rad = math.radians(angle)
+                x = int(cx + radius * math.cos(rad))
+                y = int(cy + radius * math.sin(rad))
+                canv.SetPixel(x, y, 50, 50, 50)
+
+            # Desenha arco de progresso
+            end_angle = int(360 * (progress / 100.0))
+            for angle in range(-90, -90 + end_angle):
+                rad = math.radians(angle)
+                x = int(cx + radius * math.cos(rad))
+                y = int(cy + radius * math.sin(rad))
+                canv.SetPixel(x, y, bar_col.red, bar_col.green, bar_col.blue)
+                
+                # Espessura interna
+                x2 = int(cx + (radius-1) * math.cos(rad))
+                y2 = int(cy + (radius-1) * math.sin(rad))
+                canv.SetPixel(x2, y2, bar_col.red, bar_col.green, bar_col.blue)
+
+            # Texto no centro
+            pct_txt = f"{progress:.0f}%"
+            w_pct = sum(cfg.font_m.CharacterWidth(ord(c)) for c in pct_txt)
+            graphics.DrawText(canv, cfg.font_m, cx - (w_pct // 2), cy + 4, cfg.C_WHITE, pct_txt)
+            
+        else:
+            # --- MODO 2: DADOS (Temperaturas e Status) ---
+            graphics.DrawLine(canv, 32, 12, 32, 36, cfg.C_GREY) # Divisória Vertical
+            
+            y = 18
+            step = 8
+            
+            # LINHA 1: EXT | Z
+            graphics.DrawText(canv, cfg.font_s, 2, y, cfg.C_TEAL, "EXT")
+            val = f"{p['ext_actual']:.0f}°"
+            w = sum(cfg.font_s.CharacterWidth(ord(c)) for c in val)
+            graphics.DrawText(canv, cfg.font_s, 31-w, y, cfg.C_WHITE, val)
+            
+            graphics.DrawText(canv, cfg.font_t, 34, y, cfg.C_WHITE, "Z")
+            val = f"{p.get('z_height', 0):.1f}"
+            w = sum(cfg.font_s.CharacterWidth(ord(c)) for c in val)
+            graphics.DrawText(canv, cfg.font_s, 62-w, y, cfg.C_WHITE, val)
+            
+            # LINHA 2: BED | SPD
+            y += step
+            graphics.DrawText(canv, cfg.font_s, 2, y, cfg.C_TEAL, "BED")
+            val = f"{p['bed_actual']:.0f}°"
+            w = sum(cfg.font_s.CharacterWidth(ord(c)) for c in val)
+            graphics.DrawText(canv, cfg.font_s, 31-w, y, cfg.C_WHITE, val)
+
+            graphics.DrawText(canv, cfg.font_s, 34, y, cfg.C_TEAL, "SPD")
+            val = f"{p.get('speed_factor', 100)}%"
+            w = sum(cfg.font_s.CharacterWidth(ord(c)) for c in val)
+            graphics.DrawText(canv, cfg.font_s, 62-w, y, cfg.C_WHITE, val)
+
+            # LINHA 3: CH | FAN
+            y += step
+            chamber_temp = 0
+            for k, v in p.get('sensors', {}).items():
+                if 'chamber' in k.lower() or 'enclosure' in k.lower(): chamber_temp = v; break
+            
+            graphics.DrawText(canv, cfg.font_s, 2, y, cfg.C_TEAL, "CH")
+            val = f"{chamber_temp:.0f}°" if chamber_temp > 0 else "--"
+            w = sum(cfg.font_s.CharacterWidth(ord(c)) for c in val)
+            graphics.DrawText(canv, cfg.font_s, 31-w, y, cfg.C_WHITE, val)
+
+            # FAN
+            graphics.DrawText(canv, cfg.font_s, 34, y, cfg.C_TEAL, "FAN")
+            val = f"{p.get('fan_speed', 0)}%"
+            w = sum(cfg.font_s.CharacterWidth(ord(c)) for c in val)
+            graphics.DrawText(canv, cfg.font_s, 62-w, y, cfg.C_WHITE, val)
+
+        # Divisória Horizontal (Sempre visível para separar Layer/Timers)
+        graphics.DrawLine(canv, 0, 38, 63, 38, cfg.C_GREY)
+
+        # 5. LAYER (Split Colors)
+        y = 45
+        cur_l = p.get('layer', 0)
+        tot_l = p.get('total_layers', 0)
+        
+        txt_lbl = "LYR "
+        txt_cur = f"{cur_l}"
+        txt_tot = f"/{tot_l}"
+        
+        w_lbl = sum(cfg.font_s.CharacterWidth(ord(c)) for c in txt_lbl)
+        w_cur = sum(cfg.font_s.CharacterWidth(ord(c)) for c in txt_cur)
+        w_tot = sum(cfg.font_s.CharacterWidth(ord(c)) for c in txt_tot)
+        
+        total_w = w_lbl + w_cur + w_tot
+        start_x = (64 - total_w) // 2
+        
+        graphics.DrawText(canv, cfg.font_s, start_x, y, cfg.C_WHITE, txt_lbl + txt_cur)
+        graphics.DrawText(canv, cfg.font_s, start_x + w_lbl + w_cur, y, cfg.C_YELLOW, txt_tot)
+
+        # 6. TIMERS (One per line)
         elapsed = self._fmt_time(p.get('print_duration', 0))
-        remaining = self._fmt_time(max(0, p.get('total_duration', 0) - p.get('print_duration', 0)))
-        utils.draw_center(canv, cfg.font_s, 18, cfg.C_TEAL, f"{elapsed} / {remaining}")
-
-        # 4. DADOS (Sem ícones, com nomes, sem target)
-        # Linha 1: EXT e BED
-        y_row1 = 28
-        graphics.DrawText(canv, cfg.font_s, 1, y_row1, cfg.C_ORANGE, "EXT")
-        graphics.DrawText(canv, cfg.font_s, 15, y_row1, cfg.C_WHITE, f"{p['ext_actual']:.0f}")
+        rem_sec = max(0, p.get('total_duration', 0) - p.get('print_duration', 0))
+        remaining = self._fmt_time(rem_sec)
         
-        graphics.DrawText(canv, cfg.font_s, 32, y_row1, cfg.C_ORANGE, "BED")
-        graphics.DrawText(canv, cfg.font_s, 46, y_row1, cfg.C_WHITE, f"{p['bed_actual']:.0f}")
-
-        # Linha 2: FAN, LAYER, Z
-        y_row2 = 36
-        # Usa fonte Tiny (font_t) nos labels para ganhar espaço para os números
-        graphics.DrawText(canv, cfg.font_t, 1, y_row2, cfg.C_ORANGE, "FAN")
-        graphics.DrawText(canv, cfg.font_s, 5, y_row2, cfg.C_WHITE, f"{p.get('fan_speed', 0)}")
+        # Elapsed
+        y = 53
+        ic_x, ic_y = 2, y - 3
+        # Clock Icon
+        graphics.DrawLine(canv, ic_x+1, ic_y-2, ic_x+3, ic_y-2, cfg.C_WHITE)
+        graphics.DrawLine(canv, ic_x+1, ic_y+2, ic_x+3, ic_y+2, cfg.C_WHITE)
+        graphics.DrawLine(canv, ic_x, ic_y-1, ic_x, ic_y+1, cfg.C_WHITE)
+        graphics.DrawLine(canv, ic_x+4, ic_y-1, ic_x+4, ic_y+1, cfg.C_WHITE)
+        canv.SetPixel(ic_x+2, ic_y, 255, 255, 255)
+        # Static Hand
+        canv.SetPixel(ic_x+3, ic_y, 255, 255, 255)
+        canv.SetPixel(ic_x+2, ic_y-1, 255, 255, 255) # Segundo ponteiro
         
-        graphics.DrawText(canv, cfg.font_t, 20, y_row2, cfg.C_ORANGE, "L")
-        graphics.DrawText(canv, cfg.font_s, 24, y_row2, cfg.C_WHITE, f"{p.get('layer', 0)}")
+        graphics.DrawText(canv, cfg.font_s, 12, y, cfg.C_TEAL, elapsed)
         
-        graphics.DrawText(canv, cfg.font_t, 39, y_row2, cfg.C_WHITE, "Z")
-        graphics.DrawText(canv, cfg.font_s, 43, y_row2, cfg.C_WHITE, f"{p.get('z_height', 0):.1f}")
-
-        # 5. Arquivo (Scrolling)
-        fname = p.get('filename', '').replace(".gcode", "")
-        self._draw_scrolling(canv, 48, fname, cfg.C_YELLOW, 'file')
+        # Remaining
+        y = 61
+        ic_x, ic_y = 2, y - 3
+        # Hourglass Icon
+        graphics.DrawLine(canv, ic_x, ic_y-2, ic_x+4, ic_y-2, cfg.C_WHITE)
+        graphics.DrawLine(canv, ic_x, ic_y+2, ic_x+4, ic_y+2, cfg.C_WHITE)
+        graphics.DrawLine(canv, ic_x, ic_y-2, ic_x+2, ic_y, cfg.C_WHITE)
+        graphics.DrawLine(canv, ic_x+4, ic_y-2, ic_x+2, ic_y, cfg.C_WHITE)
+        graphics.DrawLine(canv, ic_x, ic_y+2, ic_x+2, ic_y, cfg.C_WHITE)
+        graphics.DrawLine(canv, ic_x+4, ic_y+2, ic_x+2, ic_y, cfg.C_WHITE)
+        
+        # Alterna entre Restante e ETA a cada 4s
+        if int(time.time() / 4) % 2 == 0:
+            graphics.DrawText(canv, cfg.font_s, 12, y, cfg.C_YELLOW, remaining)
+        else:
+            eta = time.localtime(time.time() + rem_sec)
+            graphics.DrawText(canv, cfg.font_s, 12, y, cfg.C_YELLOW, time.strftime("ETA %H:%M", eta))
 
     def _draw_standby(self, canv, p):
         # Detect Status
@@ -104,36 +234,13 @@ class PrinterPage:
         elif is_heating: 
             st, col = "AQUECENDO", cfg.C_YELLOW
         else: 
-            st, col = "PRONTA", cfg.C_GREEN
+            st, col = "STANDBY", cfg.C_GREEN
         
         # Status Title
         utils.draw_center(canv, cfg.font_s, 6, col, st)
         graphics.DrawLine(canv, 0, 8, 63, 8, cfg.C_GREY)
 
-        if is_heating:
-            self._draw_heating_bars(canv, p)
-        else:
-            self._draw_idle_status(canv, p)
-
-        # Footer (IP)
-        ip = data.dados.get('printer_ip', '')
-        utils.draw_center(canv, cfg.font_t, 63, cfg.C_DIM, ip)
-
-    def _draw_heating_bars(self, canv, p):
-        self._draw_temp_bar(canv, 25, "EXT", p['ext_actual'], p['ext_target'], cfg.C_ORANGE)
-        self._draw_temp_bar(canv, 45, "BED", p['bed_actual'], p['bed_target'], cfg.C_WHITE)
-
-    def _draw_temp_bar(self, canv, y, label, curr, target, color):
-        graphics.DrawText(canv, cfg.font_t, 0, y, color, label)
-        val = f"{curr:.0f}/{target:.0f}"
-        w = sum(cfg.font_t.CharacterWidth(ord(c)) for c in val)
-        graphics.DrawText(canv, cfg.font_t, 64-w, y, cfg.C_WHITE, val)
-        
-        graphics.DrawLine(canv, 0, y+2, 63, y+2, cfg.C_GREY)
-        if target > 0:
-            pct = min(1.0, curr / target)
-            bar_w = int(63 * pct)
-            if bar_w > 0: graphics.DrawLine(canv, 0, y+2, bar_w, y+2, color)
+        self._draw_idle_status(canv, p)
 
     def _draw_idle_status(self, canv, p):
         # Divisória Vertical
@@ -146,21 +253,21 @@ class PrinterPage:
         step = 8
 
         # 1. EXT
-        graphics.DrawText(canv, cfg.font_s, 1, y, cfg.C_ORANGE, "EXT")
+        graphics.DrawText(canv, cfg.font_s, 1, y, cfg.C_TEAL, "EXT")
         val = f"{p['ext_actual']:.0f}°"
         w = sum(cfg.font_s.CharacterWidth(ord(c)) for c in val)
         graphics.DrawText(canv, cfg.font_s, 31-w, y, cfg.C_WHITE, val)
 
         # 2. BED
         y += step
-        graphics.DrawText(canv, cfg.font_s, 1, y, cfg.C_ORANGE, "BED")
+        graphics.DrawText(canv, cfg.font_s, 1, y, cfg.C_TEAL, "BED")
         val = f"{p['bed_actual']:.0f}°"
         w = sum(cfg.font_s.CharacterWidth(ord(c)) for c in val)
         graphics.DrawText(canv, cfg.font_s, 31-w, y, cfg.C_WHITE, val)
 
         # 3. FAN
         y += step
-        graphics.DrawText(canv, cfg.font_s, 1, y, cfg.C_ORANGE, "FAN")
+        graphics.DrawText(canv, cfg.font_s, 1, y, cfg.C_TEAL, "FAN")
         val = f"{p.get('fan_speed', 0)}%"
         w = sum(cfg.font_s.CharacterWidth(ord(c)) for c in val)
         graphics.DrawText(canv, cfg.font_s, 31-w, y, cfg.C_WHITE, val)
@@ -169,7 +276,69 @@ class PrinterPage:
         y = 16
         
         # 1. HOME
-        graphics.DrawText(canv, cfg.font_t, 34, y, cfg.C_WHITE, "HOME")
+        # Icone Home (Animado)
+        ic_x, ic_y = 34, y - 3
+        graphics.DrawLine(canv, ic_x+2, ic_y-2, ic_x, ic_y, cfg.C_TEAL)   # Roof L
+        graphics.DrawLine(canv, ic_x+2, ic_y-2, ic_x+4, ic_y, cfg.C_TEAL) # Roof R
+        graphics.DrawLine(canv, ic_x, ic_y, ic_x, ic_y+3, cfg.C_TEAL)     # Wall L
+        graphics.DrawLine(canv, ic_x+4, ic_y, ic_x+4, ic_y+3, cfg.C_TEAL) # Wall R
+        graphics.DrawLine(canv, ic_x, ic_y+3, ic_x+4, ic_y+3, cfg.C_TEAL) # Floor
+        # Porta estática (Fechada)
+        canv.SetPixel(ic_x+2, ic_y+3, cfg.C_TEAL.red, cfg.C_TEAL.green, cfg.C_TEAL.blue)
+
+        # Janela (Acende à noite: 18h-06h)
+        hour = time.localtime().tm_hour
+        is_night = hour >= 18 or hour < 6
+        if is_night:
+            canv.SetPixel(ic_x+1, ic_y+1, 255, 255, 0)
+
+        # Sol / Lua (Céu)
+        sky_x, sky_y = ic_x + 8, ic_y - 4
+        if not is_night:
+            # Sol (Dia)
+            canv.SetPixel(sky_x, sky_y, 255, 255, 0)
+            canv.SetPixel(sky_x+1, sky_y, 255, 255, 0)
+            canv.SetPixel(sky_x, sky_y+1, 255, 255, 0)
+            canv.SetPixel(sky_x+1, sky_y+1, 255, 255, 0)
+            if int(time.time()) % 2 == 0: # Brilho
+                canv.SetPixel(sky_x-1, sky_y, 255, 255, 0); canv.SetPixel(sky_x+2, sky_y, 255, 255, 0)
+                canv.SetPixel(sky_x, sky_y-1, 255, 255, 0); canv.SetPixel(sky_x, sky_y+2, 255, 255, 0)
+        else:
+            # Lua (Noite)
+            canv.SetPixel(sky_x+1, sky_y, 200, 200, 200)
+            canv.SetPixel(sky_x, sky_y+1, 200, 200, 200)
+            canv.SetPixel(sky_x+1, sky_y+2, 200, 200, 200)
+
+        # Fumaça (Se aquecendo)
+        if p.get('ext_target', 0) > 0 or p.get('bed_target', 0) > 0:
+            s_tick = int(time.time() * 5) % 4
+            sx, sy = ic_x + 2, ic_y - 3
+            
+            if s_tick == 0:
+                canv.SetPixel(sx, sy, 180, 180, 180)
+            elif s_tick == 1:
+                canv.SetPixel(sx, sy-1, 180, 180, 180)
+                canv.SetPixel(sx+1, sy-2, 120, 120, 120)
+            elif s_tick == 2:
+                canv.SetPixel(sx+1, sy-2, 120, 120, 120)
+                canv.SetPixel(sx+2, sy-3, 80, 80, 80)
+            elif s_tick == 3:
+                canv.SetPixel(sx+2, sy-3, 60, 60, 60)
+        else:
+            # Zzz (Dormindo - Ociosa)
+            z_tick = int(time.time() * 1.5) % 4
+            zx, zy = ic_x + 2, ic_y - 3
+            
+            if z_tick == 1: # .
+                canv.SetPixel(zx, zy, 150, 150, 255)
+            elif z_tick == 2: # z
+                canv.SetPixel(zx+1, zy-1, 150, 150, 255); canv.SetPixel(zx+2, zy-1, 150, 150, 255)
+                canv.SetPixel(zx+1, zy, 150, 150, 255); canv.SetPixel(zx+2, zy, 150, 150, 255)
+            elif z_tick == 3: # Z
+                graphics.DrawLine(canv, zx+2, zy-3, zx+4, zy-3, cfg.C_TEAL)
+                canv.SetPixel(zx+3, zy-2, cfg.C_TEAL.red, cfg.C_TEAL.green, cfg.C_TEAL.blue)
+                graphics.DrawLine(canv, zx+2, zy-1, zx+4, zy-1, cfg.C_TEAL)
+
         homed = p.get('homed_axes', '').upper()
         if not homed: homed = "NO"
         col = cfg.C_GREEN if homed == "XYZ" else cfg.C_BLUE
@@ -178,7 +347,7 @@ class PrinterPage:
 
         # 2. QGL
         y += step
-        graphics.DrawText(canv, cfg.font_t, 34, y, cfg.C_WHITE, "QGL")
+        graphics.DrawText(canv, cfg.font_t, 34, y, cfg.C_TEAL, "QGL")
         qgl = p.get('qgl_applied', False)
         val = "OK" if qgl else "NO"
         col = cfg.C_GREEN if qgl else cfg.C_RED
@@ -187,7 +356,7 @@ class PrinterPage:
 
         # 3. Z-POS
         y += step
-        graphics.DrawText(canv, cfg.font_t, 34, y, cfg.C_WHITE, "Z")
+        graphics.DrawText(canv, cfg.font_t, 34, y, cfg.C_TEAL, "Z")
         #y += 8
         z_val = f"{p.get('z_height', 0):.2f}"
         w = sum(cfg.font_s.CharacterWidth(ord(c)) for c in z_val)
@@ -213,8 +382,8 @@ class PrinterPage:
         
         total_sec = p.get('stats', {}).get('total_time', 0)
         hours = int(total_sec / 3600)
-        val = f"{hours} horas"
-        graphics.DrawText(canv, cfg.font_s, 10, y, cfg.C_TEAL, val)
+        val = f"{hours}h"
+        graphics.DrawText(canv, cfg.font_s, 10, y, cfg.C_WHITE, val)
 
         # 5. FIL (Spool)
         y = 50
@@ -237,8 +406,8 @@ class PrinterPage:
         
         total_mm = p.get('stats', {}).get('total_filament', 0)
         meters = int(total_mm / 1000)
-        val = f"{meters} metros"
-        graphics.DrawText(canv, cfg.font_s, 10, y, cfg.C_ORANGE, val)
+        val = f"{meters}m"
+        graphics.DrawText(canv, cfg.font_s, 10, y, cfg.C_WHITE, val)
 
     # --- Helpers ---
     def _draw_simple_msg(self, canv, title, color, sub=""):
@@ -268,7 +437,7 @@ class PrinterPage:
         try:
             m, s = divmod(int(s), 60)
             h, m = divmod(m, 60)
-            return f"{h}h{m}m" if h > 0 else f"{m}m{s}s"
+            return f"{h:02d}:{m:02d}:{s:02d}"
         except: return "--:--"
 
 # Instância única

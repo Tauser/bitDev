@@ -11,7 +11,7 @@ import animations
 import app as web_app
 import layout
 
-from pages import dashboard, bolsa, galeria, impressora
+from pages import dashboard, bolsa, galeria, impressora, clima
 import utils
 
 def sd_notify(msg):
@@ -65,34 +65,63 @@ playlist_atual = obter_playlist_ativa()
 def realizar_transicao_fade():
     global indice_playlist, ultimo_checkpoint, playlist_atual
     
+    # 1. Carrega nova playlist para verificar mudanças
+    nova_playlist = obter_playlist_ativa()
+    if not nova_playlist: nova_playlist = [{"id": "DASHBOARD", "tempo": 10}]
+    
+    # Identifica ID da tela atual com segurança
+    id_atual = ""
+    if indice_playlist < len(playlist_atual):
+        id_atual = playlist_atual[indice_playlist]["id"]
+    
+    # 2. Inicia Fade Out
     animations.fade_transition(matrix, 0, cfg.FADE_SPEED)
     
-    playlist_atual = obter_playlist_ativa()
+    # 3. CRÍTICO: Limpa a tela e atualiza o hardware PARA O PRETO antes de processar a próxima
+    # Isso evita que a tela antiga fique "travada" ou "tremendo" enquanto a próxima carrega
+    canvas.Clear()
+    canvas = matrix.SwapOnVSync(canvas)
     
-    for _ in range(len(playlist_atual)):
-        indice_playlist = (indice_playlist + 1) % len(playlist_atual)
-        nova_tela = playlist_atual[indice_playlist]
-        pid = nova_tela["id"]
-        
-        if pid == "IMPRESSORA" and not data.dados['status'].get('printer', False):
-            continue
-            
-        if pid == "BOLSA" and not data.dados['status'].get('stocks', False):
-            continue
-            
-        # if pid == "DASHBOARD" and not data.dados['status'].get('btc', False):
-        #    continue
-        
-        break 
+    # Atualiza playlist oficial
+    playlist_atual = nova_playlist
     
-    if nova_tela["id"] == "GALERIA":
+    # Garante índice válido antes de procurar a próxima
+    if indice_playlist >= len(playlist_atual): 
+        indice_playlist = 0
+    
+    # 4. Encontra a próxima tela válida
+    proximo_idx = indice_playlist
+    proxima_tela = None
+    
+    # Tenta encontrar a próxima tela válida na sequência
+    for i in range(1, len(playlist_atual) + 1):
+        idx = (indice_playlist + i) % len(playlist_atual)
+        cand = playlist_atual[idx]
+        pid = cand["id"]
+        
+        # Filtros de Hardware
+        if pid == "IMPRESSORA" and not data.dados['status'].get('printer', False): continue
+        if pid == "BOLSA" and not data.dados['status'].get('stocks', False): continue
+        
+        proximo_idx = idx
+        proxima_tela = cand
+        break
+    
+    if proxima_tela is None:
+        proximo_idx = 0
+        proxima_tela = playlist_atual[0]
+    
+    indice_playlist = proximo_idx
+    
+    # 5. Inicializa a nova tela (Agora seguro, pois a tela já está preta)
+    if proxima_tela["id"] == "GALERIA":
         galeria.sortear_novo()
-    elif nova_tela["id"] == "DASHBOARD":
+    elif proxima_tela["id"] == "DASHBOARD":
         dashboard.init()
     
-    canvas.Clear()
     ultimo_checkpoint = time.time()
     
+    # 6. Fade In
     brilho_alvo = data.dados.get('brilho', 70)
     animations.fade_transition(matrix, brilho_alvo, cfg.FADE_SPEED)
 
@@ -144,14 +173,20 @@ try:
             else:
                 titulo = None
                 if tela_config["id"] == "BOLSA": titulo = "MERCADO"
-                if tela_config["id"] != "IMPRESSORA":
-                    layout.draw_header(canvas, titulo)
+                
+                header_col = cfg.C_TEAL
+                if tela_config["id"] == "DASHBOARD": header_col = cfg.C_ORANGE
+                elif tela_config["id"] == "BOLSA": header_col = cfg.C_BLUE
+                
+                if tela_config["id"] not in ["IMPRESSORA", "CLIMA"]:
+                    layout.draw_header(canvas, titulo, header_col)
 
                 if tela_config["id"] == "DASHBOARD": dashboard.draw(canvas)
                 elif tela_config["id"] == "BOLSA": bolsa.draw(canvas)
                 elif tela_config["id"] == "IMPRESSORA": impressora.draw(canvas)
+                elif tela_config["id"] == "CLIMA": clima.draw(canvas)
 
-                if tela_config["id"] != "IMPRESSORA":
+                if tela_config["id"] not in ["IMPRESSORA", "CLIMA"]:
                     layout.draw_footer(canvas)
                 time.sleep(0.05)
 

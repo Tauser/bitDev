@@ -222,6 +222,9 @@ button:hover,
   text-align: center;
   flex: none !important;
 }
+.sortable-ghost {
+  opacity: 0.4;
+}
 
 /* Switch */
 .switch {
@@ -517,14 +520,14 @@ input:checked + .slider:before {
 }
 
 /* Datalist Labels Customization */
-datalist {
+#brilho-markers {
   display: flex;
   justify-content: space-between;
   width: 100%;
   margin-top: -5px;
   padding: 0 5px;
 }
-option {
+#brilho-markers option {
   font-size: 0.7rem;
   color: white;
   display: flex;

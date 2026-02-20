@@ -36,6 +36,7 @@ def ler_config():
                 {"id": "DASHBOARD", "nome": "Dashboard Cripto", "enabled": True, "tempo": 30},
                 {"id": "BOLSA",     "nome": "Bolsa & Mercado",  "enabled": True, "tempo": 15},
                 {"id": "IMPRESSORA", "nome": "Impressora 3D",    "enabled": True, "tempo": 15},
+                {"id": "CLIMA",     "nome": "Meteorologia",     "enabled": True, "tempo": 15},
                 {"id": "GALERIA",   "nome": "Galeria PixelArt", "enabled": True, "tempo": 10}
             ]
         }
@@ -216,14 +217,31 @@ def get_sys_metrics():
 @app.route('/')
 def index():
     config = ler_config()
+    
+    # Lista completa de páginas do sistema
+    system_pages = [
+        {"id": "DASHBOARD", "nome": "Dashboard Cripto", "enabled": True, "tempo": 30},
+        {"id": "BOLSA",     "nome": "Bolsa & Mercado",  "enabled": True, "tempo": 15},
+        {"id": "IMPRESSORA", "nome": "Impressora 3D",    "enabled": True, "tempo": 15},
+        {"id": "CLIMA",     "nome": "Meteorologia",     "enabled": True, "tempo": 15},
+        {"id": "GALERIA",   "nome": "Galeria PixelArt", "enabled": True, "tempo": 10}
+    ]
+
     # Garante que a chave pages exista (para compatibilidade)
     if 'pages' not in config:
-        config['pages'] = [
-            {"id": "DASHBOARD", "nome": "Dashboard Cripto", "enabled": True, "tempo": 30},
-            {"id": "BOLSA",     "nome": "Bolsa & Mercado",  "enabled": True, "tempo": 15},
-            {"id": "GALERIA",   "nome": "Galeria PixelArt", "enabled": True, "tempo": 10}
-        ]
+        config['pages'] = system_pages
         salvar_config(config)
+    else:
+        # Merge: Adiciona páginas novas que ainda não estão no config do usuário
+        current_ids = [p['id'] for p in config['pages']]
+        modified = False
+        for page in system_pages:
+            if page['id'] not in current_ids:
+                config['pages'].append(page)
+                modified = True
+        
+        if modified:
+            salvar_config(config)
         
     # Listar GIFs locais para a galeria
     local_gifs = []
@@ -235,6 +253,9 @@ def index():
     return render_template('index.html', 
                            moedas=config['secundarias'], 
                            brilho=config.get('brilho', 50),
+                           cidade=config.get('cidade', 'Sao_Paulo'),
+                           lat=config.get('lat', ''),
+                           lon=config.get('lon', ''),
                            noturno=config.get('modo_noturno', False),
                            pages=config['pages'],
                            printer_ip=config.get('printer_ip', ''),
@@ -259,6 +280,33 @@ def ajustar_brilho():
     config['last_brilho_change'] = time.time()
     salvar_config(config)
     return jsonify({'message': f'Brilho ajustado para {nivel}%', 'status': 'success'})
+
+@app.route('/salvar_clima', methods=['POST'])
+def salvar_clima():
+    cidade = request.form.get('cidade')
+    lat = request.form.get('latitude')
+    lon = request.form.get('longitude')
+    
+    config = ler_config()
+    
+    if cidade:
+        config['cidade'] = cidade
+        
+    if lat and lon:
+        try:
+            config['lat'] = float(lat)
+            config['lon'] = float(lon)
+            config['manual_coords'] = True
+        except ValueError:
+            return jsonify({'message': 'Latitude/Longitude inválidas.', 'status': 'error'})
+    else:
+        config['manual_coords'] = False
+        config.pop('lat', None)
+        config.pop('lon', None)
+        
+    salvar_config(config)
+    msg = f"Cidade definida para {cidade}!" + (" (Coords Manuais)" if config.get('manual_coords') else "")
+    return jsonify({'message': msg, 'status': 'success'})
 
 @app.route('/alternar_noturno')
 def alternar_noturno():
@@ -317,20 +365,30 @@ def remover(simbolo):
 
 @app.route('/salvar_playlist', methods=['POST'])
 def salvar_playlist():
+    data = request.get_json()
+    if not data or 'pages' not in data:
+        return jsonify({'message': 'Dados inválidos', 'status': 'error'})
+        
     config = ler_config()
-    novas_paginas = []
+    current_pages_map = {p['id']: p for p in config.get('pages', [])}
     
-    # Reconstrói a lista baseada no form
-    for page in config.get('pages', []):
-        pid = page['id']
-        # Checkbox: se não vier no form, é False
-        enabled = request.form.get(f"enable_{pid}") == "on"
-        tempo = int(request.form.get(f"time_{pid}", 15))
-        page['enabled'] = enabled
-        page['tempo'] = tempo
+    new_pages = []
+    for p_in in data['pages']:
+        pid = p_in.get('id')
+        if pid in current_pages_map:
+            page = current_pages_map[pid]
+            page['enabled'] = bool(p_in.get('enabled'))
+            page['tempo'] = int(p_in.get('tempo'))
+            new_pages.append(page)
     
+    # Adiciona páginas que possam ter faltado (segurança)
+    for pid, page in current_pages_map.items():
+        if pid not in [p['id'] for p in new_pages]:
+            new_pages.append(page)
+            
+    config['pages'] = new_pages
     salvar_config(config)
-    return jsonify({'message': 'Playlist salva com sucesso!', 'status': 'success'})
+    return jsonify({'message': 'Playlist salva e reordenada!', 'status': 'success'})
 
 @app.route('/salvar_printer', methods=['POST'])
 def salvar_printer():
@@ -405,20 +463,30 @@ def api_status():
 
 @app.route('/upload_gif', methods=['POST'])
 def upload_gif():
-    if 'file' not in request.files: return redirect('/')
+    if 'file' not in request.files: return jsonify({'message': 'Nenhum arquivo enviado.', 'status': 'error'})
     file = request.files['file']
-    if file.filename == '': return redirect('/')
+    if file.filename == '': return jsonify({'message': 'Nome do arquivo vazio.', 'status': 'error'})
     
     if file and file.filename.lower().endswith('.gif'):
-        filename = secure_filename(file.filename)
         if not os.path.exists(PIXELART_FOLDER): os.makedirs(PIXELART_FOLDER)
         
+        # Renomeação sequencial (1.gif, 2.gif...)
+        existing_files = [f for f in os.listdir(PIXELART_FOLDER) if f.lower().endswith('.gif')]
+        max_num = 0
+        for f in existing_files:
+            try:
+                num = int(os.path.splitext(f)[0])
+                if num > max_num: max_num = num
+            except ValueError: pass
+            
+        filename = f"{max_num + 1}.gif"
         save_path = os.path.join(PIXELART_FOLDER, filename)
+        
         file.save(save_path)
         try: os.chmod(save_path, 0o666) # Permite editar via SFTP depois
         except: pass
         
-        return jsonify({'message': f'GIF "{filename}" enviado!', 'status': 'success'})
+        return jsonify({'message': f'GIF enviado como "{filename}"!', 'status': 'success'})
     else:
         return jsonify({'message': 'Apenas arquivos .gif são permitidos.', 'status': 'error'})
 

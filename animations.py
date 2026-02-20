@@ -63,16 +63,10 @@ def fade_transition(matrix, target_brightness, speed=4):
 
 def executar_matrix_rain(canvas, matrix):
     """Animação de Boot que espera os dados carregarem."""
-    print("Iniciando Matrix Boot e aguardando dados...")
+    print("Iniciando Boot e aguardando dados...")
     
-    cor_head = garantir_cor(getattr(cfg, 'C_MAT_HEAD', (200, 255, 200)))
-    cor_tail = garantir_cor(getattr(cfg, 'C_MAT_TAIL', (0, 100, 0)))
     cor_texto = garantir_cor(cfg.C_TEAL)
     cor_dots  = garantir_cor(cfg.C_ORANGE)
-
-    width = 64
-    height = 64
-    columns = [0] * width
     
     start_time = time.time()
     min_run_time = 5
@@ -94,21 +88,17 @@ def executar_matrix_rain(canvas, matrix):
 
     while True:
         canvas.Clear()
-        for x in range(0, width, 2):
-            if columns[x] == 0:
-                if random.random() > 0.9: columns[x] = 1
-            else:
-                columns[x] += 1
-                if columns[x] > height + 5: columns[x] = 0
-            
-            y = columns[x]
-            if y > 0 and y < height:
-                canvas.SetPixel(x, y, cor_head.red, cor_head.green, cor_head.blue)
-                for tail in range(1, 5):
-                    if y - tail > 0:
-                        canvas.SetPixel(x, y - tail, cor_tail.red, cor_tail.green, cor_tail.blue)
-
-        utils.draw_center(canvas, cfg.font_l, 25, cor_texto, "BITDEV")
+        
+        # Logo "Gordinho" (Bold 2x2)
+        txt = "BITDEV"
+        font = cfg.font_l
+        w = sum(font.CharacterWidth(ord(c)) for c in txt)
+        x = (64 - w) // 2
+        y = 25
+        graphics.DrawText(canvas, font, x, y, cor_texto, txt)
+        graphics.DrawText(canvas, font, x+1, y, cor_texto, txt)
+        graphics.DrawText(canvas, font, x, y+1, cor_texto, txt)
+        graphics.DrawText(canvas, font, x+1, y+1, cor_texto, txt)
         
         if (time.time() - start_time > 15) and not data.dados.get('conexao', True):
              utils.draw_center(canvas, cfg.font_t, 35, cfg.C_RED, "SEM INTERNET")

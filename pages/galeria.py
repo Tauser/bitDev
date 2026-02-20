@@ -4,6 +4,7 @@ import config as cfg
 import utils
 import data
 import animations
+import layout
 
 # --- ESTADO LOCAL DA PÁGINA ---
 pos_scroll = 64
@@ -24,12 +25,7 @@ def draw(canv):
         last_anim_saitama_time = time.time()
 
     # 1. HEADER
-    for y in range(9): 
-        graphics.DrawLine(canv, 0, y, 63, y, cfg.C_BG_HEADER)
-    graphics.DrawText(canv, cfg.font_s, 1, 6, cfg.C_TEAL, time.strftime("%d/%m"))
-    utils.draw_center(canv, cfg.font_s, 6, cfg.C_WHITE, f"{data.dados['temp']}\u00b0C")
-    graphics.DrawText(canv, cfg.font_s, 44, 6, cfg.C_WHITE, time.strftime("%H:%M"))
-    graphics.DrawLine(canv, 0, 8, 63, 8, cfg.C_GREY)
+    layout.draw_header(canv, None, cfg.C_TEAL)
 
     # 2. BITCOIN
     utils.draw_bold(canv, cfg.font_m, 1, 16, cfg.C_ORANGE, "BTC")
