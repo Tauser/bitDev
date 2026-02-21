@@ -131,7 +131,11 @@
           <form onsubmit="savePlaylist(event)">
             <div class="playlist-list" id="playlist-list">
               {% for page in pages %}
-              <div class="playlist-item" data-id="{{ page.id }}">
+              <div
+                class="playlist-item"
+                data-id="{{ page.id }}"
+                style="align-items: center"
+              >
                 <i
                   class="fa-solid fa-bars handle"
                   style="color: #64748b; cursor: grab; margin-right: 10px"
@@ -159,6 +163,21 @@
                   class="time-input"
                 />
                 s
+                <div
+                  style="
+                    display: flex;
+                    gap: 5px;
+                    align-items: center;
+                    margin-left: 15px;
+                  "
+                >
+                  <small style="color: #94a3b8; font-size: 0.7rem"
+                    >Horário:</small
+                  >
+                  <input type="time" name="inicio" value="{{ page.inicio }}" />
+                  <span style="color: #94a3b8">-</span>
+                  <input type="time" name="fim" value="{{ page.fim }}" />
+                </div>
               </div>
               {% endfor %}
             </div>

@@ -70,6 +70,7 @@ def carregar_config():
                 dados['printer_ip'] = config.get('printer_ip', '')
                 dados['printer_name'] = config.get('printer_name', 'VORON 2.4')
                 dados['msg_custom'] = config.get('msg_custom', '')
+                dados['modo_noturno'] = config.get('modo_noturno', False)
                 
                 raw_list = config.get('secundarias', [])
                 if isinstance(raw_list, list):

@@ -313,13 +313,36 @@ function savePlaylist(event) {
   const list = document.getElementById("playlist-list");
   const items = list.querySelectorAll(".playlist-item");
   const pages = [];
+  let hasError = false;
 
   items.forEach((item) => {
     const id = item.getAttribute("data-id");
     const enabled = item.querySelector('input[type="checkbox"]').checked;
     const tempo = item.querySelector('input[type="number"]').value;
-    pages.push({ id: id, enabled: enabled, tempo: tempo });
+
+    const inicio = item.querySelector('input[name="inicio"]').value;
+    const fim = item.querySelector('input[name="fim"]').value;
+
+    if (inicio && fim && fim < inicio) {
+      hasError = true;
+    }
+
+    pages.push({
+      id: id,
+      enabled: enabled,
+      tempo: tempo,
+      inicio: inicio,
+      fim: fim,
+    });
   });
+
+  if (hasError) {
+    showToast(
+      "Erro: O horário de Fim não pode ser menor que o Início.",
+      "error",
+    );
+    return;
+  }
 
   fetch("/salvar_playlist", {
     method: "POST",

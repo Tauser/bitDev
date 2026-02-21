@@ -128,7 +128,8 @@ input[type="range"] {
 input[type="text"],
 input[type="number"],
 input[type="email"],
-input[type="password"] {
+input[type="password"],
+input[type="time"] {
   flex: 1;
   padding: 10px;
   border-radius: 6px;
@@ -137,8 +138,19 @@ input[type="password"] {
   color: white;
   width: 100%;
   box-sizing: border-box; /* Garante que padding não aumente a largura total */
+  height: 45px;
+  font-size: 1rem;
 }
+
+/* Ícone do relógio branco */
+input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+}
+
 button {
+  height: 45px;
+  box-sizing: border-box;
   padding: 10px 15px;
   border-radius: 6px;
   border: none;
@@ -217,8 +229,8 @@ button:hover,
   text-overflow: ellipsis;
 }
 .time-input {
-  width: 50px !important;
-  padding: 5px 2px !important;
+  width: 60px !important;
+  padding: 10px 5px !important;
   text-align: center;
   flex: none !important;
 }

@@ -11,7 +11,7 @@ import animations
 import app as web_app
 import layout
 
-from pages import dashboard, bolsa, galeria, impressora, clima
+from pages import dashboard, bolsa, galeria, impressora, clima, relogio
 import utils
 
 def sd_notify(msg):
@@ -48,7 +48,31 @@ def obter_playlist_ativa():
         if os.path.exists(path):
             with open(path, 'r') as f:
                 d = json.load(f)
-                paginas = [p for p in d.get('pages', []) if p.get('enabled', True)]
+                
+                paginas = []
+                now = time.localtime()
+                curr_min = now.tm_hour * 60 + now.tm_min
+                
+                for p in d.get('pages', []):
+                    if not p.get('enabled', True): continue
+                    
+                    # Verificação de Horário
+                    inicio = p.get('inicio', '00:00')
+                    fim = p.get('fim', '23:59')
+                    
+                    try:
+                        ih, im = map(int, inicio.split(':'))
+                        fh, fm = map(int, fim.split(':'))
+                        start = ih * 60 + im
+                        end = fh * 60 + fm
+                        
+                        if start <= end: # Horário normal (ex: 08:00 as 20:00)
+                            if not (start <= curr_min <= end): continue
+                        else: # Passa da meia-noite (ex: 22:00 as 06:00)
+                            if not (curr_min >= start or curr_min <= end): continue
+                    except: pass
+                    
+                    paginas.append(p)
                 
                 if not paginas:
                     return [{"id": "DASHBOARD", "tempo": 10}]
@@ -58,10 +82,34 @@ def obter_playlist_ativa():
     
     return cfg.PLAYLIST
 
+# Função auxiliar para desenhar qualquer tela (usada na transição)
+def desenhar_tela_generica(canv, tela_conf):
+    if tela_conf["id"] == "GALERIA":
+        galeria.draw(canv)
+    else:
+        titulo = None
+        if tela_conf["id"] == "BOLSA": titulo = "MERCADO"
+        
+        header_col = cfg.C_TEAL
+        if tela_conf["id"] == "DASHBOARD": header_col = cfg.C_ORANGE
+        elif tela_conf["id"] == "BOLSA": header_col = cfg.C_BLUE
+        
+        if tela_conf["id"] not in ["IMPRESSORA", "CLIMA", "RELOGIO"]:
+            layout.draw_header(canv, titulo, header_col)
+
+        if tela_conf["id"] == "DASHBOARD": dashboard.draw(canv)
+        elif tela_conf["id"] == "BOLSA": bolsa.draw(canv)
+        elif tela_conf["id"] == "IMPRESSORA": impressora.draw(canv)
+        elif tela_conf["id"] == "CLIMA": clima.draw(canv)
+        elif tela_conf["id"] == "RELOGIO": relogio.draw(canv)
+
+        if tela_conf["id"] not in ["IMPRESSORA", "CLIMA", "RELOGIO"]:
+            layout.draw_footer(canv)
+
 playlist_atual = obter_playlist_ativa()
 
 def realizar_transicao_fade():
-    global indice_playlist, ultimo_checkpoint, playlist_atual
+    global indice_playlist, ultimo_checkpoint, playlist_atual, canvas
     
     nova_playlist = obter_playlist_ativa()
     if not nova_playlist: nova_playlist = [{"id": "DASHBOARD", "tempo": 10}]
@@ -70,8 +118,10 @@ def realizar_transicao_fade():
     if indice_playlist < len(playlist_atual):
         id_atual = playlist_atual[indice_playlist]["id"]
     
+    # 1. Efeito de Saída (Fade Out)
     animations.fade_transition(matrix, 0, cfg.FADE_SPEED)
     
+    # Limpa a tela visualmente para garantir que não haja "rastro" durante o carregamento
     canvas.Clear()
     canvas = matrix.SwapOnVSync(canvas)
     
@@ -106,9 +156,19 @@ def realizar_transicao_fade():
     elif proxima_tela["id"] == "DASHBOARD":
         dashboard.init()
     
+    canvas.Clear()
+    desenhar_tela_generica(canvas, proxima_tela)
+    canvas = matrix.SwapOnVSync(canvas)
     ultimo_checkpoint = time.time()
     
+    # 3. Efeito de Entrada (Fade In)
     brilho_alvo = data.dados.get('brilho', 70)
+    
+    # Ajuste Noturno na Transição
+    if data.dados.get('modo_noturno', False):
+        h = time.localtime().tm_hour
+        if h >= 22 or h < 6: brilho_alvo = min(brilho_alvo, 30)
+        
     animations.fade_transition(matrix, brilho_alvo, cfg.FADE_SPEED)
 
 print(">> Sistema Iniciado. Entrando no Loop...")
@@ -134,6 +194,12 @@ try:
             canvas.Clear()
 
             brilho_atual = data.dados.get('brilho', 70)
+            
+            # Auto Brilho Noturno (22h - 06h)
+            if data.dados.get('modo_noturno', False):
+                h = time.localtime().tm_hour
+                if h >= 22 or h < 6: brilho_atual = min(brilho_atual, 30)
+
             if matrix.brightness != brilho_atual:
                 matrix.brightness = brilho_atual
 
@@ -153,28 +219,9 @@ try:
                  time.sleep(0.5)
                  continue
 
-            if tela_config["id"] == "GALERIA":
-                galeria.draw(canvas)
-                time.sleep(0.1)
-            else:
-                titulo = None
-                if tela_config["id"] == "BOLSA": titulo = "MERCADO"
-                
-                header_col = cfg.C_TEAL
-                if tela_config["id"] == "DASHBOARD": header_col = cfg.C_ORANGE
-                elif tela_config["id"] == "BOLSA": header_col = cfg.C_BLUE
-                
-                if tela_config["id"] not in ["IMPRESSORA", "CLIMA"]:
-                    layout.draw_header(canvas, titulo, header_col)
-
-                if tela_config["id"] == "DASHBOARD": dashboard.draw(canvas)
-                elif tela_config["id"] == "BOLSA": bolsa.draw(canvas)
-                elif tela_config["id"] == "IMPRESSORA": impressora.draw(canvas)
-                elif tela_config["id"] == "CLIMA": clima.draw(canvas)
-
-                if tela_config["id"] not in ["IMPRESSORA", "CLIMA"]:
-                    layout.draw_footer(canvas)
-                time.sleep(0.05)
+            # Usa a nova função genérica também no loop principal
+            desenhar_tela_generica(canvas, tela_config)
+            time.sleep(0.05)
 
             canvas = matrix.SwapOnVSync(canvas)
             

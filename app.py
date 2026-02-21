@@ -196,11 +196,12 @@ def index():
     config = ler_config()
     
     system_pages = [
-        {"id": "DASHBOARD", "nome": "Dashboard Cripto", "enabled": True, "tempo": 30},
-        {"id": "BOLSA",     "nome": "Bolsa & Mercado",  "enabled": True, "tempo": 15},
-        {"id": "IMPRESSORA", "nome": "Impressora 3D",    "enabled": True, "tempo": 15},
-        {"id": "CLIMA",     "nome": "Meteorologia",     "enabled": True, "tempo": 15},
-        {"id": "GALERIA",   "nome": "Galeria PixelArt", "enabled": True, "tempo": 10}
+        {"id": "DASHBOARD", "nome": "Dashboard Cripto", "enabled": True, "tempo": 30, "inicio": "00:00", "fim": "23:59"},
+        {"id": "BOLSA",     "nome": "Bolsa & Mercado",  "enabled": True, "tempo": 15, "inicio": "00:00", "fim": "23:59"},
+        {"id": "IMPRESSORA", "nome": "Impressora 3D",    "enabled": True, "tempo": 15, "inicio": "00:00", "fim": "23:59"},
+        {"id": "CLIMA",     "nome": "Meteorologia",     "enabled": True, "tempo": 15, "inicio": "00:00", "fim": "23:59"},
+        {"id": "GALERIA",   "nome": "Galeria PixelArt", "enabled": True, "tempo": 10, "inicio": "00:00", "fim": "23:59"},
+        {"id": "RELOGIO",   "nome": "Relógio Grande",   "enabled": True, "tempo": 15, "inicio": "00:00", "fim": "23:59"}
     ]
 
     if 'pages' not in config:
@@ -212,6 +213,15 @@ def index():
         for page in system_pages:
             if page['id'] not in current_ids:
                 config['pages'].append(page)
+                modified = True
+        
+        # Garante que campos de horário existam em configs antigas
+        for p in config['pages']:
+            if 'inicio' not in p:
+                p['inicio'] = '00:00'
+                modified = True
+            if 'fim' not in p:
+                p['fim'] = '23:59'
                 modified = True
         
         if modified:
@@ -349,6 +359,8 @@ def salvar_playlist():
             page = current_pages_map[pid]
             page['enabled'] = bool(p_in.get('enabled'))
             page['tempo'] = int(p_in.get('tempo'))
+            page['inicio'] = p_in.get('inicio', page.get('inicio', '00:00'))
+            page['fim'] = p_in.get('fim', page.get('fim', '23:59'))
             new_pages.append(page)
     
     for pid, page in current_pages_map.items():

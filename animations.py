@@ -48,17 +48,68 @@ def carregar_gif(caminho, w, h):
         print(f"Erro no GIF {caminho}: {e}")
     return frames
 
-def fade_transition(matrix, target_brightness, speed=4):
+def fade_transition(matrix, target_brightness, speed=1):
+    """Transição de brilho. Speed define o tamanho do passo (maior = mais rápido)."""
+    if speed is None or speed <= 0: speed = 1
+    
     current = matrix.brightness
-    step = speed if current < target_brightness else -speed
     if current == target_brightness: return
 
-    faixa = range(current, target_brightness + step, step)
-    for b in faixa:
-        val = max(0, min(100, b))
-        matrix.brightness = val
-        time.sleep(0.01)
+    step = speed if current < target_brightness else -speed
+    
+    # Loop enquanto não atingir (ou cruzar) o alvo
+    while (step > 0 and current < target_brightness) or (step < 0 and current > target_brightness):
+        current += step
+        # Clampa no alvo para não passar direto
+        if (step > 0 and current > target_brightness) or (step < 0 and current < target_brightness):
+            current = target_brightness
+            
+        matrix.brightness = max(0, min(100, current))
+        time.sleep(0.005) 
+        
     matrix.brightness = target_brightness
+
+def flash_transition(matrix, speed=5):
+    """Efeito de clarão branco (Whiteout)"""
+    # 1. Aumenta brilho ao máximo (Flash)
+    current = matrix.brightness
+    matrix.brightness = 100
+    
+    # 2. Preenche de branco (opcional, se quiser flash total)
+    # canvas = matrix.CreateFrameCanvas()
+    # canvas.Fill(255, 255, 255)
+    # matrix.SwapOnVSync(canvas)
+    # time.sleep(0.05)
+    
+    # 3. Escurece rápido
+    fade_transition(matrix, 0, speed * 2)
+
+def draw_loading(canvas):
+    """Desenha um indicador de carregamento simples"""
+    canvas.Clear()
+    utils.draw_center(canvas, cfg.font_s, 35, cfg.C_DIM, "...")
+
+def slide_transition(matrix, draw_func, speed=2):
+    """Efeito de entrada deslizante (Reveal/Wipe)"""
+    canvas = matrix.CreateFrameCanvas()
+    width = matrix.width
+    
+    # Restaura o brilho antes de animar (pois estava apagado)
+    matrix.brightness = data.dados.get('brilho', 70)
+    
+    # Animação de varredura da esquerda para a direita
+    for i in range(0, width + 1, speed):
+        canvas.Clear()
+        
+        # Desenha a tela completa
+        draw_func(canvas)
+        
+        # Cobre a parte direita com preto (simulando a entrada)
+        if i < width:
+            for x in range(i, width):
+                graphics.DrawLine(canvas, x, 0, x, 63, graphics.Color(0, 0, 0))
+        
+        canvas = matrix.SwapOnVSync(canvas)
 
 def executar_matrix_rain(canvas, matrix):
     print("Iniciando Boot e aguardando dados...")
