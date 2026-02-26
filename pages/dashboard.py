@@ -23,7 +23,8 @@ def draw(canv):
     global slide_secundarias_idx, last_slide_time, anim_saitama_idx, last_anim_saitama_time
 
     # Animação
-    if frames_saitama and (time.time() - last_anim_saitama_time > cfg.GIF_SPEED):
+    speed = data.dados.get('gif_speed', cfg.GIF_SPEED)
+    if frames_saitama and (time.time() - last_anim_saitama_time > speed):
         anim_saitama_idx = (anim_saitama_idx + 1) % len(frames_saitama)
         last_anim_saitama_time = time.time()
 

@@ -20,6 +20,16 @@ if not os.path.exists(PIXELART_FOLDER):
 
 print(f">> [APP] Carregando rotas Web v2.1. Rodando como: {getpass.getuser()}")
 
+def fix_ownership(path):
+    """Força o arquivo a ter o mesmo dono da pasta pai (ex: usuário pi)"""
+    try:
+        parent = os.path.dirname(path)
+        st = os.stat(parent) # Pega o dono da pasta (ex: pi)
+        os.chown(path, st.st_uid, st.st_gid) # Aplica ao arquivo
+        os.chmod(path, 0o666) # Garante leitura/escrita para todos
+    except Exception as e:
+        print(f"Aviso: Erro ao ajustar permissões de {path}: {e}")
+
 def ler_config():
     try:
         with open(CONFIG_PATH, 'r') as f:
@@ -30,7 +40,9 @@ def ler_config():
             "brilho": 50, 
             "last_brilho_change": 0, 
             "modo_noturno": False,
+            "gif_speed": 0.1,
             "cidade": "Sao_Paulo",
+            "agenda_url": "",
             "pages": [
                 {"id": "DASHBOARD", "nome": "Dashboard Cripto", "enabled": True, "tempo": 30},
                 {"id": "BOLSA",     "nome": "Bolsa & Mercado",  "enabled": True, "tempo": 15},
@@ -45,6 +57,7 @@ def salvar_config(config):
         json.dump(config, f, indent=2)
         f.flush()
         os.fsync(f.fileno())
+    fix_ownership(CONFIG_PATH)
 
 def get_folder_size(folder):
     total_size = 0
@@ -201,7 +214,8 @@ def index():
         {"id": "IMPRESSORA", "nome": "Impressora 3D",    "enabled": True, "tempo": 15, "inicio": "00:00", "fim": "23:59"},
         {"id": "CLIMA",     "nome": "Meteorologia",     "enabled": True, "tempo": 15, "inicio": "00:00", "fim": "23:59"},
         {"id": "GALERIA",   "nome": "Galeria PixelArt", "enabled": True, "tempo": 10, "inicio": "00:00", "fim": "23:59"},
-        {"id": "RELOGIO",   "nome": "Relógio Grande",   "enabled": True, "tempo": 15, "inicio": "00:00", "fim": "23:59"}
+        {"id": "RELOGIO",   "nome": "Relógio Grande",   "enabled": True, "tempo": 15, "inicio": "00:00", "fim": "23:59"},
+        {"id": "AGENDA",    "nome": "Google Agenda",    "enabled": True, "tempo": 15, "inicio": "00:00", "fim": "23:59"}
     ]
 
     if 'pages' not in config:
@@ -237,6 +251,8 @@ def index():
                            moedas=config['secundarias'], 
                            brilho=config.get('brilho', 50),
                            cidade=config.get('cidade', 'Sao_Paulo'),
+                           gif_speed=config.get('gif_speed', 0.1),
+                           agenda_url=config.get('agenda_url', ''),
                            lat=config.get('lat', ''),
                            lon=config.get('lon', ''),
                            noturno=config.get('modo_noturno', False),
@@ -264,6 +280,17 @@ def ajustar_brilho():
     salvar_config(config)
     return jsonify({'message': f'Brilho ajustado para {nivel}%', 'status': 'success'})
 
+@app.route('/salvar_velocidade_gif', methods=['POST'])
+def salvar_velocidade_gif():
+    speed = request.form.get('speed')
+    config = ler_config()
+    try:
+        config['gif_speed'] = float(speed)
+        salvar_config(config)
+        return jsonify({'message': 'Velocidade ajustada!', 'status': 'success'})
+    except:
+        return jsonify({'message': 'Valor inválido.', 'status': 'error'})
+
 @app.route('/salvar_clima', methods=['POST'])
 def salvar_clima():
     cidade = request.form.get('cidade')
@@ -290,6 +317,14 @@ def salvar_clima():
     salvar_config(config)
     msg = f"Cidade definida para {cidade}!" + (" (Coords Manuais)" if config.get('manual_coords') else "")
     return jsonify({'message': msg, 'status': 'success'})
+
+@app.route('/salvar_agenda', methods=['POST'])
+def salvar_agenda():
+    url = request.form.get('agenda_url')
+    config = ler_config()
+    config['agenda_url'] = url
+    salvar_config(config)
+    return jsonify({'message': 'Agenda salva com sucesso!', 'status': 'success'})
 
 @app.route('/alternar_noturno')
 def alternar_noturno():
@@ -455,8 +490,7 @@ def upload_gif():
         save_path = os.path.join(PIXELART_FOLDER, filename)
         
         file.save(save_path)
-        try: os.chmod(save_path, 0o666)
-        except: pass
+        fix_ownership(save_path)
         
         return jsonify({'message': f'GIF enviado como "{filename}"!', 'status': 'success'})
     else:
@@ -509,8 +543,7 @@ def download_gif():
             
             save_path = os.path.join(PIXELART_FOLDER, filename)
             with open(save_path, 'wb') as f: f.write(r.content)
-            try: os.chmod(save_path, 0o666)
-            except: pass
+            fix_ownership(save_path)
             return jsonify({'message': 'GIF baixado com sucesso!', 'status': 'success'})
     except Exception as e:
         return jsonify({'message': f'Erro no download: {e}', 'status': 'error'})

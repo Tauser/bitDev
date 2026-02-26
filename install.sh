@@ -10,7 +10,7 @@ sudo apt-get update
 sudo apt-get install -y python3-dev python3-pip python3-pillow git python3-setuptools wireless-tools
 
 echo ">> [2/5] Instalando bibliotecas Python..."
-sudo pip3 install flask requests --break-system-packages
+sudo pip3 install flask requests icalendar python-dateutil --break-system-packages
 
 echo ">> [3/5] Baixando e compilando driver da Matriz de LED..."
 cd ~

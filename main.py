@@ -11,7 +11,7 @@ import animations
 import app as web_app
 import layout
 
-from pages import dashboard, bolsa, galeria, impressora, clima, relogio
+from pages import dashboard, bolsa, galeria, impressora, clima, relogio, agenda
 import utils
 
 def sd_notify(msg):
@@ -89,10 +89,12 @@ def desenhar_tela_generica(canv, tela_conf):
     else:
         titulo = None
         if tela_conf["id"] == "BOLSA": titulo = "MERCADO"
+        elif tela_conf["id"] == "AGENDA": titulo = "AGENDA"
         
         header_col = cfg.C_TEAL
         if tela_conf["id"] == "DASHBOARD": header_col = cfg.C_ORANGE
         elif tela_conf["id"] == "BOLSA": header_col = cfg.C_BLUE
+        elif tela_conf["id"] == "AGENDA": header_col = cfg.C_GOLD
         
         if tela_conf["id"] not in ["IMPRESSORA", "CLIMA", "RELOGIO"]:
             layout.draw_header(canv, titulo, header_col)
@@ -102,8 +104,9 @@ def desenhar_tela_generica(canv, tela_conf):
         elif tela_conf["id"] == "IMPRESSORA": impressora.draw(canv)
         elif tela_conf["id"] == "CLIMA": clima.draw(canv)
         elif tela_conf["id"] == "RELOGIO": relogio.draw(canv)
+        elif tela_conf["id"] == "AGENDA": agenda.draw(canv)
 
-        if tela_conf["id"] not in ["IMPRESSORA", "CLIMA", "RELOGIO"]:
+        if tela_conf["id"] not in ["IMPRESSORA", "CLIMA", "RELOGIO", "AGENDA"]:
             layout.draw_footer(canv)
 
 playlist_atual = obter_playlist_ativa()
@@ -140,6 +143,7 @@ def realizar_transicao_fade():
         
         if pid == "IMPRESSORA" and not data.dados['status'].get('printer', False): continue
         if pid == "BOLSA" and not data.dados['status'].get('stocks', False): continue
+        if pid == "GALERIA" and not galeria.tem_imagens(): continue
         
         proximo_idx = idx
         proxima_tela = cand

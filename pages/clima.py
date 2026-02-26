@@ -22,6 +22,25 @@ class WeatherPage:
         self.C_CLOUD_WHITE = (220, 220, 220)
         self.C_CLOUD_GREY = (150, 150, 150)
         self.C_CLOUD_DARK = (80, 80, 80)
+        
+        # Carrega fonte gigante (mesma do relógio)
+        self.font_big = graphics.Font()
+        font_loaded = False
+        try:
+            paths = [
+                os.path.join(os.path.expanduser("~"), "rpi-rgb-led-matrix/fonts/10x20.bdf"),
+                "fonts/10x20.bdf",
+                "../rpi-rgb-led-matrix/fonts/10x20.bdf"
+            ]
+            for p in paths:
+                if os.path.exists(p):
+                    self.font_big.LoadFont(p)
+                    font_loaded = True
+                    break
+        except: pass
+        
+        if not font_loaded:
+            self.font_big = cfg.font_xl
 
     def _get_moon_phase(self):
         try:
@@ -183,7 +202,9 @@ class WeatherPage:
             is_night = hour >= 18 or hour < 6
         
         temp_str = f"{w.get('temp', 0)}°"
-        graphics.DrawText(canv, cfg.font_xl, 8, 18, self.C_WARM_WHITE, temp_str)
+        w_temp = sum(self.font_big.CharacterWidth(ord(c)) for c in temp_str)
+        x_temp = (38 - w_temp) // 2
+        graphics.DrawText(canv, self.font_big, x_temp, 17, self.C_WARM_WHITE, temp_str)
         
         cidade = data.dados.get('cidade', 'SP').upper()
         if len(cidade) > 16: cidade = cidade[:16]

@@ -6,6 +6,16 @@ import time
 import threading
 import config as cfg
 from rgbmatrix import graphics
+import re
+import datetime
+
+try:
+    from icalendar import Calendar
+    ICAL_AVAILABLE = True
+except ImportError:
+    print(">> AVISO: Biblioteca 'icalendar' não encontrada. Execute 'bash install.sh' novamente.")
+    ICAL_AVAILABLE = False
+except: ICAL_AVAILABLE = False
 
 JSON_PATH = os.path.join(cfg.BASE_DIR, 'user_config.json')
 
@@ -13,9 +23,12 @@ dados = {
     'temp': '0',
     'brilho': 70,
     'fg_val': 50,
+    'gif_speed': 0.1,
     'usdtbrl': 5.00,
     'conexao': True,
     'bitcoin': {'usd': 0, 'brl': 0, 'change': 0},
+    'agenda': [],
+    'agenda_url': '',
     'secondary': [],
     'moedas_ativas': ['BTC', 'ETH', 'SOL'],
     'cidade': 'Sao_Paulo',
@@ -71,6 +84,8 @@ def carregar_config():
                 dados['printer_name'] = config.get('printer_name', 'VORON 2.4')
                 dados['msg_custom'] = config.get('msg_custom', '')
                 dados['modo_noturno'] = config.get('modo_noturno', False)
+                dados['gif_speed'] = float(config.get('gif_speed', 0.1))
+                dados['agenda_url'] = config.get('agenda_url', '')
                 
                 raw_list = config.get('secundarias', [])
                 if isinstance(raw_list, list):
@@ -283,6 +298,63 @@ def ler_temperatura():
                 dados['weather']['max'] = int(round(daily['temperature_2m_max'][0]))
                 dados['weather']['pop'] = int(round(daily['precipitation_probability_max'][0]))
         except: pass
+
+def fetch_agenda():
+    global dados
+    if not ICAL_AVAILABLE: return
+    if not dados.get('agenda_url'): return
+    
+    try:
+        # Baixa o ICS
+        r = requests.get(dados['agenda_url'], timeout=10)
+        if r.status_code != 200:
+            print(f"Agenda: Erro ao baixar arquivo (Status {r.status_code})")
+            return
+            
+        cal = Calendar.from_ical(r.content)
+        events = []
+        
+        # Trabalhar com Horário Local do Sistema (Naive) para evitar confusão de Fuso
+        now = datetime.datetime.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        for component in cal.walk():
+            if component.name == "VEVENT":
+                summary_obj = component.get('summary')
+                summary = str(summary_obj) if summary_obj else "Evento"
+                
+                dtstart_prop = component.get('dtstart')
+                if not dtstart_prop: continue
+                dtstart = dtstart_prop.dt
+                
+                # Normalização para Naive Local Time (remove timezone se existir)
+                if isinstance(dtstart, datetime.datetime):
+                    if dtstart.tzinfo is not None:
+                        dtstart = dtstart.astimezone().replace(tzinfo=None)
+                elif isinstance(dtstart, datetime.date):
+                    # Evento de dia inteiro: converte para datetime 00:00 local
+                    dtstart = datetime.datetime.combine(dtstart, datetime.time.min)
+                
+                # Filtra eventos antigos (anteriores a hoje)
+                if dtstart >= today_start:
+                    events.append({'summary': summary, 'dt': dtstart})
+        
+        # Ordena por data
+        events.sort(key=lambda x: x['dt'])
+        
+        # Lógica: Semana vs Mês
+        next_week = today_start + datetime.timedelta(days=7)
+        events_week = [e for e in events if e['dt'] <= next_week]
+        
+        if events_week:
+            dados['agenda'] = events_week[:6]
+        else:
+            # Se não tem na semana, tenta no mês (30 dias)
+            next_month = today_start + datetime.timedelta(days=30)
+            events_month = [e for e in events if e['dt'] <= next_month]
+            dados['agenda'] = events_month[:6]
+    except Exception as e:
+        print(f"Erro Agenda: {e}")
 
 def fetch_stocks():
     global dados
@@ -499,7 +571,7 @@ def loop_atualizacao(matrix):
     fetch_btc_only()
     
     fetch_extras()
-    threading.Thread(target=lambda: (ler_temperatura(), fetch_stocks(), fetch_printer_data(), fetch_secondary_coins(), save_debug_info())).start()
+    threading.Thread(target=lambda: (ler_temperatura(), fetch_stocks(), fetch_printer_data(), fetch_secondary_coins(), fetch_agenda(), save_debug_info())).start()
     
     timer_secundarias = 0
     timer_lento = 0
@@ -525,6 +597,7 @@ def loop_atualizacao(matrix):
             fetch_extras()
             ler_temperatura()
             fetch_stocks()
+            fetch_agenda()
             timer_lento = 0
 
 def iniciar_thread(matrix):

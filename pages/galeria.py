@@ -135,15 +135,25 @@ def draw(canv):
     if pos_scroll + txt_len < 0: pos_scroll = 64
 import os
 import random
+import time
 from rgbmatrix import graphics
 import config as cfg
 import utils
 import animations
+import data
 
 # --- ESTADO LOCAL ---
 frames_pixelart_cheio = []
 anim_art_idx = 0
 ultimo_gif_nome = "" 
+last_frame_time = 0
+
+def tem_imagens():
+    try:
+        pasta = os.path.join(cfg.BASE_DIR, "images/pixelart")
+        if not os.path.exists(pasta): return False
+        return any(f.lower().endswith('.gif') for f in os.listdir(pasta))
+    except: return False
 
 def sortear_novo():
     """Sorteia um novo GIF da pasta"""
@@ -173,11 +183,16 @@ def sortear_novo():
         frames_pixelart_cheio = []
 
 def draw(canv):
-    global anim_art_idx
+    global anim_art_idx, last_frame_time
+    
+    speed = data.dados.get('gif_speed', 0.1)
+    
     if frames_pixelart_cheio:
         try:
             canv.SetImage(frames_pixelart_cheio[anim_art_idx], 0, 0)
-            anim_art_idx = (anim_art_idx + 1) % len(frames_pixelart_cheio)
+            if time.time() - last_frame_time > speed:
+                anim_art_idx = (anim_art_idx + 1) % len(frames_pixelart_cheio)
+                last_frame_time = time.time()
         except: pass
     else:
         graphics.DrawLine(canv, 0, 0, 63, 63, cfg.C_RED) 

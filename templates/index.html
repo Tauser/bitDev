@@ -267,6 +267,31 @@
         </div>
 
         <div class="card">
+          <h3>Google Agenda (iCal)</h3>
+          <form onsubmit="submitForm(event, '/salvar_agenda')">
+            <div class="form-group">
+              <label style="margin-bottom: 5px; display: block"
+                >Link Secreto (iCal/ICS)</label
+              >
+              <input
+                type="text"
+                name="agenda_url"
+                value="{{ agenda_url }}"
+                placeholder="https://calendar.google.com/.../basic.ics"
+                required
+              />
+              <small style="color: #64748b; font-size: 0.8rem; margin-top: 5px">
+                No Google Agenda: Configurações > Selecione a Agenda > Integrar
+                Agenda > Endereço secreto em formato iCal.
+              </small>
+            </div>
+            <button type="submit" class="btn btn-primary full-width">
+              Salvar Agenda
+            </button>
+          </form>
+        </div>
+
+        <div class="card">
           <h3>Impressora 3D (Klipper)</h3>
           <form onsubmit="submitForm(event, '/salvar_printer')">
             <div class="form-group">
@@ -346,6 +371,33 @@
 
       <!-- GALERIA TAB -->
       <div id="Galeria" class="tab-content">
+        <div class="card">
+          <h3>Configurações da Galeria</h3>
+          <form onsubmit="submitForm(event, '/salvar_velocidade_gif')">
+            <div class="form-group">
+              <label style="margin-bottom: 5px; display: block"
+                >Velocidade (Delay:
+                <span id="speed-val">{{ gif_speed }}</span>s)</label
+              >
+              <input
+                type="range"
+                name="speed"
+                min="0.01"
+                max="0.5"
+                step="0.01"
+                value="{{ gif_speed }}"
+                oninput="
+                  document.getElementById('speed-val').innerText = this.value
+                "
+                style="width: 100%"
+              />
+            </div>
+            <button type="submit" class="btn btn-primary full-width">
+              Salvar Velocidade
+            </button>
+          </form>
+        </div>
+
         <div class="card">
           <h3>Upload de GIF</h3>
           <form
