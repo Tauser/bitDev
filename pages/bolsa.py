@@ -1,15 +1,15 @@
 from rgbmatrix import graphics
 import config as cfg
-import utils
 import data
 
+
 def draw(canv):
-    st = data.dados['stocks']
-    
+    state = data.get_state_snapshot()
+    st = state['stocks']
+
     # Layout Tabela Limpa
     # Colunas: [Nome]   [Valor]    [%]
-    # X aprox: 1        22         48
-    
+
     # 1. IBOVESPA (Brasil)
     y = 15
     graphics.DrawText(canv, cfg.font_s, 1, y, cfg.C_BLUE, "IBOV")
@@ -33,7 +33,7 @@ def draw(canv):
 
     # 4. Dólar (USD)
     y += 10
-    usd_val = data.dados['usdtbrl']
+    usd_val = state['usdtbrl']
     graphics.DrawText(canv, cfg.font_s, 1, y, cfg.C_GREEN, "USD")
-    # Formatação com R$ e vírgula
     graphics.DrawText(canv, cfg.font_s, 22, y, cfg.C_WHITE, f"R${usd_val:.2f}".replace(".", ","))
+

@@ -1,24 +1,143 @@
 from flask import Flask, render_template, request, redirect, flash, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
-import json
 import subprocess
 import time
 import os
+import hmac
 import config as cfg
-import requests
 import shutil
 import socket
 import getpass
+from functools import wraps
+from infra.http_client import get_http_client
+from infra.logging_config import get_logger
+from services.config_service import read_config, write_config
+def _require_env(name):
+    value = os.environ.get(name, "").strip()
+    if value:
+        return value
+    raise RuntimeError(f"Variavel de ambiente obrigatoria ausente: {name}")
+http_client = get_http_client()
+logger = get_logger(__name__)
+runtime_data = None
+_APP_STARTED_AT = time.time()
+try:
+    import data as runtime_data
+except Exception as exc:
+    logger.debug("op=runtime_import status=unavailable reason=%s", exc)
 
+
+def _get_runtime_readiness():
+    if runtime_data is None:
+        return {
+            'ready': False,
+            'collector_alive': False,
+            'snapshot_ready': False,
+            'tick_age_s': None,
+        }
+
+    try:
+        return runtime_data.get_runtime_status()
+    except Exception as exc:
+        logger.warning("op=runtime_readiness status=failed reason=%s", exc)
+        return {
+            'ready': False,
+            'collector_alive': False,
+            'snapshot_ready': False,
+            'tick_age_s': None,
+        }
+
+
+
+def _get_runtime_metrics():
+    if runtime_data is None:
+        return {
+            'runtime': {
+                'ready': False,
+                'collector_alive': False,
+                'snapshot_ready': False,
+                'tick_age_s': None,
+                'collector_started': False,
+            },
+            'freshness': {
+                'has_stale': True,
+                'stale': {},
+                'age_s': {},
+                'ttl_s': {},
+                'offline_since': None,
+            },
+            'providers': {},
+        }
+
+    try:
+        return runtime_data.get_observability_metrics()
+    except Exception as exc:
+        logger.warning("op=runtime_metrics status=failed reason=%s", exc)
+        return {
+            'runtime': _get_runtime_readiness(),
+            'freshness': {
+                'has_stale': True,
+                'stale': {},
+                'age_s': {},
+                'ttl_s': {},
+                'offline_since': None,
+            },
+            'providers': {},
+        }
 app = Flask(__name__)
-app.secret_key = 'chave_secreta_crypto_monitor'
+app.secret_key = _require_env('BITDEV_FLASK_SECRET_KEY')
 CONFIG_PATH = os.path.join(cfg.BASE_DIR, 'user_config.json')
 PIXELART_FOLDER = os.path.join(cfg.BASE_DIR, 'images', 'pixelart')
+DEFAULT_CONFIG = {
+    "secundarias": ["ETHUSDT"],
+    "brilho": 50,
+    "last_brilho_change": 0,
+    "modo_noturno": False,
+    "gif_speed": 0.1,
+    "cidade": "Sao_Paulo",
+    "agenda_url": "",
+    "pages": [
+        {"id": "DASHBOARD", "nome": "Dashboard Cripto", "enabled": True, "tempo": 30},
+        {"id": "BOLSA", "nome": "Bolsa & Mercado", "enabled": True, "tempo": 15},
+        {"id": "IMPRESSORA", "nome": "Impressora 3D", "enabled": True, "tempo": 15},
+        {"id": "CLIMA", "nome": "Meteorologia", "enabled": True, "tempo": 15},
+        {"id": "GALERIA", "nome": "Galeria PixelArt", "enabled": True, "tempo": 10},
+    ],
+}
 
 if not os.path.exists(PIXELART_FOLDER):
     os.makedirs(PIXELART_FOLDER)
 
-print(f">> [APP] Carregando rotas Web v2.1. Rodando como: {getpass.getuser()}")
+logger.info("op=app_boot status=routes_loaded version=v2.1 user=%s", getpass.getuser())
+
+def _get_admin_token():
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[7:].strip()
+        if token:
+            return token
+    return request.headers.get("X-Admin-Token") or request.args.get("admin_token") or request.form.get("admin_token")
+
+def _expected_admin_token():
+    return os.environ.get("BITDEV_ADMIN_TOKEN", "").strip()
+
+def require_admin_token(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        expected = _expected_admin_token()
+        if not expected:
+            return jsonify({"message": "Token administrativo nao configurado no servidor.", "status": "error"}), 403
+
+        provided = _get_admin_token()
+        if not provided:
+            return jsonify({"message": "Token administrativo obrigatorio.", "status": "error"}), 401
+
+        if not hmac.compare_digest(provided, expected):
+            return jsonify({"message": "Token administrativo invalido.", "status": "error"}), 403
+
+        return fn(*args, **kwargs)
+
+    return wrapper
 
 def fix_ownership(path):
     """Força o arquivo a ter o mesmo dono da pasta pai (ex: usuário pi)"""
@@ -26,38 +145,19 @@ def fix_ownership(path):
         parent = os.path.dirname(path)
         st = os.stat(parent) # Pega o dono da pasta (ex: pi)
         os.chown(path, st.st_uid, st.st_gid) # Aplica ao arquivo
-        os.chmod(path, 0o666) # Garante leitura/escrita para todos
+        os.chmod(path, 0o640) # Leitura restrita; escrita apenas dono
     except Exception as e:
-        print(f"Aviso: Erro ao ajustar permissões de {path}: {e}")
+        logger.warning("op=fix_ownership status=failed path=%s reason=%s", path, e)
 
 def ler_config():
-    try:
-        with open(CONFIG_PATH, 'r') as f:
-            return json.load(f)
-    except:
-        return {
-            "secundarias": ["ETHUSDT"], 
-            "brilho": 50, 
-            "last_brilho_change": 0, 
-            "modo_noturno": False,
-            "gif_speed": 0.1,
-            "cidade": "Sao_Paulo",
-            "agenda_url": "",
-            "pages": [
-                {"id": "DASHBOARD", "nome": "Dashboard Cripto", "enabled": True, "tempo": 30},
-                {"id": "BOLSA",     "nome": "Bolsa & Mercado",  "enabled": True, "tempo": 15},
-                {"id": "IMPRESSORA", "nome": "Impressora 3D",    "enabled": True, "tempo": 15},
-                {"id": "CLIMA",     "nome": "Meteorologia",     "enabled": True, "tempo": 15},
-                {"id": "GALERIA",   "nome": "Galeria PixelArt", "enabled": True, "tempo": 10}
-            ]
-        }
+    return read_config(CONFIG_PATH, default=DEFAULT_CONFIG, logger=logger)
+
 
 def salvar_config(config):
-    with open(CONFIG_PATH, 'w') as f:
-        json.dump(config, f, indent=2)
-        f.flush()
-        os.fsync(f.fileno())
+    write_config(CONFIG_PATH, config, backup_path=f"{CONFIG_PATH}.bak", logger=logger, file_mode=0o640)
     fix_ownership(CONFIG_PATH)
+    if os.path.exists(f"{CONFIG_PATH}.bak"):
+        fix_ownership(f"{CONFIG_PATH}.bak")
 
 def get_folder_size(folder):
     total_size = 0
@@ -78,18 +178,18 @@ def get_sys_metrics():
     try:
         with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
             m['cpu_temp'] = round(int(f.read()) / 1000, 1)
-    except Exception as e: print(f"Erro CPU Temp: {e}")
+    except Exception as e: logger.debug("op=get_sys_metrics metric=cpu_temp status=fallback reason=%s", e)
     
     if m['cpu_temp'] == 0:
         try:
             out = subprocess.check_output(['vcgencmd', 'measure_temp']).decode()
             m['cpu_temp'] = float(out.replace("temp=", "").replace("'C", "").strip())
-        except: pass
+        except Exception: pass
 
     try:
         with open("/proc/loadavg", "r") as f:
             m['cpu_load'] = f.read().split()[0]
-    except Exception as e: print(f"Erro Load: {e}")
+    except Exception as e: logger.debug("op=get_sys_metrics metric=cpu_load status=fallback reason=%s", e)
 
     try:
         with open("/proc/uptime", "r") as f:
@@ -99,7 +199,7 @@ def get_sys_metrics():
             minutes = rem // 60
             if days > 0: m['uptime'] = f"{days}d {hours}h {minutes}m"
             else: m['uptime'] = f"{hours}h {minutes}m"
-    except Exception as e: print(f"Erro Uptime: {e}")
+    except Exception as e: logger.debug("op=get_sys_metrics metric=uptime status=fallback reason=%s", e)
     
     try:
         mem = {}
@@ -115,7 +215,7 @@ def get_sys_metrics():
             avail = mem.get('MemAvailable', mem.get('MemFree', 0))
             if total > 0:
                 m['ram_usage'] = round(((total - avail) / total) * 100, 1)
-    except Exception as e: print(f"Erro RAM: {e}")
+    except Exception as e: logger.debug("op=get_sys_metrics metric=ram status=fallback reason=%s", e)
     
     if m['ram_usage'] == 0:
         try:
@@ -123,7 +223,7 @@ def get_sys_metrics():
             total = int(out[1])
             used = int(out[2])
             m['ram_usage'] = round((used / total) * 100, 1)
-        except: pass
+        except Exception: pass
     
     try:
         total, used, free = shutil.disk_usage(cfg.BASE_DIR)
@@ -164,7 +264,7 @@ def get_sys_metrics():
                     'color': colors[i % len(colors)]
                 })
             
-    except Exception as e: print(f"Erro Disk: {e}")
+    except Exception as e: logger.warning("op=get_sys_metrics metric=disk status=failed reason=%s", e)
 
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -172,7 +272,7 @@ def get_sys_metrics():
         s.connect(('8.8.8.8', 1))
         m['ip'] = s.getsockname()[0]
         s.close()
-    except:
+    except Exception:
         try:
             cmd = ['hostname', '-I']
             if os.path.exists('/usr/bin/hostname'): cmd = ['/usr/bin/hostname', '-I']
@@ -180,11 +280,11 @@ def get_sys_metrics():
             
             out = subprocess.check_output(cmd).decode().strip()
             if out: m['ip'] = out.split()[0]
-        except:
+        except Exception:
             try:
                 out = subprocess.check_output(['ip', 'route', 'get', '1.1.1.1']).decode()
                 m['ip'] = out.split('src')[1].split()[0]
-            except Exception as e: print(f"Erro IP: {e}")
+            except Exception as e: logger.warning("op=get_sys_metrics metric=ip status=failed reason=%s", e)
 
     try:
         cmd = ['iwgetid', '-r']
@@ -193,14 +293,14 @@ def get_sys_metrics():
         
         ssid = subprocess.check_output(cmd).decode().strip()
         if ssid: m['wifi_ssid'] = ssid
-    except:
+    except Exception:
         try:
             with open("/etc/wpa_supplicant/wpa_supplicant.conf", "r") as f:
                 for line in f:
                     if "ssid=" in line:
                         m['wifi_ssid'] = line.split('=')[1].strip().strip('"')
                         break
-        except Exception as e: print(f"Erro WiFi: {e}")
+        except Exception as e: logger.debug("op=get_sys_metrics metric=wifi_ssid status=fallback reason=%s", e)
 
     return m
 
@@ -288,8 +388,7 @@ def salvar_velocidade_gif():
         config['gif_speed'] = float(speed)
         salvar_config(config)
         return jsonify({'message': 'Velocidade ajustada!', 'status': 'success'})
-    except:
-        return jsonify({'message': 'Valor inválido.', 'status': 'error'})
+    except Exception: return jsonify({'message': 'Valor inválido.', 'status': 'error'})
 
 @app.route('/salvar_clima', methods=['POST'])
 def salvar_clima():
@@ -340,11 +439,10 @@ def adicionar():
     
     try:
         test_url = f"https://api.binance.com/api/v3/ticker/price?symbol={simbolo}"
-        r = requests.get(test_url, timeout=2)
+        r = http_client.get(test_url, timeout=2)
         if r.status_code != 200:
             return jsonify({'message': f"Erro: A moeda '{simbolo}' não foi encontrada na Binance!", 'status': 'error'})
-    except:
-        return jsonify({'message': "Erro: Falha na conexão ao validar moeda.", 'status': 'error'})
+    except Exception: return jsonify({'message': "Erro: Falha na conexão ao validar moeda.", 'status': 'error'})
 
     config = ler_config()
     if simbolo and simbolo not in config['secundarias']:
@@ -417,6 +515,7 @@ def salvar_printer():
     return jsonify({'message': 'Configurações da impressora salvas!', 'status': 'success'})
 
 @app.route('/reiniciar')
+@require_admin_token
 def reiniciar_painel():
     def restart_later():
         time.sleep(1)
@@ -429,12 +528,14 @@ def reiniciar_painel():
     return redirect('/')
 
 @app.route('/desligar')
+@require_admin_token
 def desligar_sistema():
     flash("Desligando sistema... Aguarde.", 'success')
     subprocess.run(['sudo', 'shutdown', 'now'])
     return redirect('/')
 
 @app.route('/wifi_reset')
+@require_admin_token
 def wifi_reset():
     try:
         subprocess.run(['sudo', 'wpa_cli', '-i', 'wlan0', 'reconfigure'])
@@ -444,6 +545,7 @@ def wifi_reset():
     return redirect('/')
 
 @app.route('/salvar_wifi', methods=['POST'])
+@require_admin_token
 def salvar_wifi():
     ssid = request.form.get('ssid')
     psk = request.form.get('psk')
@@ -459,6 +561,7 @@ def salvar_wifi():
         with open(tmp_path, "w") as f:
             f.write(config_content)
         subprocess.run(['sudo', 'mv', tmp_path, '/etc/wpa_supplicant/wpa_supplicant.conf'], check=True)
+        subprocess.run(['sudo', 'chmod', '640', '/etc/wpa_supplicant/wpa_supplicant.conf'], check=True)
         subprocess.run(['sudo', 'wpa_cli', '-i', 'wlan0', 'reconfigure'], check=True)
         flash(f"Wi-Fi configurado para '{ssid}'. Tentando conectar...", 'success')
     except Exception as e:
@@ -468,6 +571,43 @@ def salvar_wifi():
 @app.route('/api/status')
 def api_status():
     return jsonify(get_sys_metrics())
+
+@app.route('/api/health')
+def api_health():
+    return jsonify({
+        'status': 'ok',
+        'service': 'cryptomonitor',
+        'alive': True,
+    }), 200
+
+
+@app.route('/api/ready')
+def api_ready():
+    readiness = _get_runtime_readiness()
+    ready = bool(readiness.get('ready', False))
+
+    payload = {
+        'status': 'ready' if ready else 'not_ready',
+        'ready': ready,
+        'collector_alive': bool(readiness.get('collector_alive', False)),
+        'snapshot_ready': bool(readiness.get('snapshot_ready', False)),
+        'tick_age_s': readiness.get('tick_age_s'),
+    }
+    return jsonify(payload), (200 if ready else 503)
+
+
+@app.route('/api/metrics')
+def api_metrics():
+    metrics = _get_runtime_metrics()
+    payload = {
+        'service': 'cryptomonitor',
+        'uptime_s': int(max(0, time.time() - _APP_STARTED_AT)),
+        'runtime': metrics.get('runtime', {}),
+        'freshness': metrics.get('freshness', {}),
+        'providers': metrics.get('providers', {}),
+    }
+    return jsonify(payload), 200
+
 
 @app.route('/upload_gif', methods=['POST'])
 def upload_gif():
@@ -504,7 +644,7 @@ def delete_gif(filename):
         if os.path.exists(path):
             os.remove(path)
             return jsonify({'message': 'GIF removido.', 'status': 'success'})
-    except: pass
+    except Exception: pass
     return jsonify({'message': 'Erro ao remover GIF.', 'status': 'error'})
 
 @app.route('/search_gif')
@@ -517,7 +657,7 @@ def search_gif():
         url = f"https://g.tenor.com/v1/search?q={query}&key=LIVDSRZULELA&limit=8&media_filter=minimal"
         if pos: url += f"&pos={pos}"
         
-        r = requests.get(url, timeout=5)
+        r = http_client.get(url, timeout=5)
         if r.status_code == 200:
             data = r.json()
             results = []
@@ -525,7 +665,7 @@ def search_gif():
                 media = item['media'][0]['tinygif']
                 results.append({'name': item.get('content_description', 'gif'), 'url': media['url'], 'preview': media['preview']})
             return jsonify({'results': results, 'next': data.get('next', '')})
-    except: pass
+    except Exception: pass
     return jsonify({'results': [], 'next': ''})
 
 @app.route('/download_gif', methods=['POST'])
@@ -535,7 +675,7 @@ def download_gif():
     if not url: return redirect('/')
     
     try:
-        r = requests.get(url, timeout=10)
+        r = http_client.get(url, timeout=10)
         if r.status_code == 200:
             filename = secure_filename(f"{name}.gif")
             if not filename.lower().endswith('.gif'): filename += ".gif"
@@ -562,20 +702,21 @@ def measure_speed():
         if 'time=' in out:
             t = out.split('time=')[1].split(' ')[0]
             ping = f"{int(float(t))}ms"
-    except: pass
+    except Exception: pass
     
     try:
         start = time.time()
-        requests.get("https://speed.cloudflare.com/__down?bytes=500000", timeout=5)
+        http_client.get("https://speed.cloudflare.com/__down?bytes=500000", timeout=5)
         duration = time.time() - start
         if duration > 0.01:
             speed = 4.0 / duration # 4 Megabits / tempo
             dl = f"{speed:.1f} Mbps"
-    except: pass
+    except Exception: pass
     
     return jsonify({'ping': ping, 'download': dl})
 
 @app.route('/logs')
+@require_admin_token
 def get_logs():
     try:
         out = subprocess.check_output(['journalctl', '-u', 'crypto.service', '-n', '100', '--no-pager']).decode()
@@ -585,3 +726,13 @@ def get_logs():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
+
+
+
+
+
+
+
+
+

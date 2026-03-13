@@ -35,6 +35,8 @@ USER_NAME=${SUDO_USER:-$(whoami)}
 PROJECT_DIR=$(pwd)
 CHOWN_BIN=$(which chown)
 SERVICE_FILE="/etc/systemd/system/crypto.service"
+ENV_DROPIN_DIR="/etc/systemd/system/crypto.service.d"
+ENV_FILE="$ENV_DROPIN_DIR/env.conf"
 
 # Garante pasta de imagens
 mkdir -p "$PROJECT_DIR/images"
@@ -70,7 +72,37 @@ EOF
     sudo $CHOWN_BIN $USER_NAME:$USER_NAME "$CONFIG_FILE"
 fi
 
+
+# Sempre reforça permissão restrita do config
+sudo chmod 640 "$CONFIG_FILE"
+
 echo "Configurando para usuário: $USER_NAME na pasta: $PROJECT_DIR"
+
+# Configuração de variáveis sensíveis para o serviço
+FLASK_SECRET_KEY="${BITDEV_FLASK_SECRET_KEY:-}"
+ADMIN_TOKEN="${BITDEV_ADMIN_TOKEN:-}"
+
+if [ -z "$FLASK_SECRET_KEY" ]; then
+    FLASK_SECRET_KEY=$(python3 - <<'PY'
+import secrets
+print(secrets.token_urlsafe(48))
+PY
+)
+    echo ">> BITDEV_FLASK_SECRET_KEY não informado; chave aleatória gerada para este host."
+fi
+
+if [ -z "$ADMIN_TOKEN" ]; then
+    echo ">> AVISO: BITDEV_ADMIN_TOKEN não definido. Rotas administrativas responderão 403 até configurar."
+fi
+
+sudo mkdir -p "$ENV_DROPIN_DIR"
+sudo bash -c "cat > $ENV_FILE" <<EOF
+[Service]
+Environment=BITDEV_FLASK_SECRET_KEY=$FLASK_SECRET_KEY
+Environment=BITDEV_ADMIN_TOKEN=$ADMIN_TOKEN
+EOF
+sudo chown root:root "$ENV_FILE"
+sudo chmod 640 "$ENV_FILE"
 
 sudo bash -c "cat > $SERVICE_FILE" <<EOF
 [Unit]

@@ -191,7 +191,8 @@ class WeatherPage:
         return ""
 
     def draw(self, canv):
-        w = data.dados.get('weather', {})
+        state = data.get_state_snapshot()
+        w = state.get('weather', {})
         code = w.get('code', 0)
         
         hour = time.localtime().tm_hour
@@ -206,7 +207,7 @@ class WeatherPage:
         x_temp = (38 - w_temp) // 2
         graphics.DrawText(canv, self.font_big, x_temp, 17, self.C_WARM_WHITE, temp_str)
         
-        cidade = data.dados.get('cidade', 'SP').upper()
+        cidade = state.get('cidade', 'SP').upper()
         if len(cidade) > 16: cidade = cidade[:16]
         graphics.DrawText(canv, cfg.font_s, 4, 28, self.C_LIGHT_GREY, cidade)
         
@@ -297,3 +298,5 @@ weather_page = WeatherPage()
 
 def draw(canv):
     weather_page.draw(canv)
+
+

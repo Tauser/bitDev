@@ -24,10 +24,11 @@ class PrinterPage:
         except: pass
 
     def draw(self, canv):
+        state = data.get_state_snapshot()
         if self.bg_image:
             canv.SetImage(self.bg_image, 0, 0)
 
-        p = data.dados['printer']
+        p = state['printer']
         state = str(p.get('state', 'OFFLINE')).upper()
         
         # --- DEBUG: FORÇAR TELA DE IMPRESSÃO PARA EDIÇÃO ---
@@ -445,3 +446,5 @@ printer_page = PrinterPage()
 
 def draw(canv):
     printer_page.draw(canv)
+
+

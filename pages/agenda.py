@@ -12,7 +12,8 @@ class AgendaPage:
         self.cycle_start = time.time()
 
     def draw(self, canv):
-        events = data.dados.get('agenda', [])
+        state = data.get_state_snapshot()
+        events = state.get('agenda', [])
         
         if not events:
             utils.draw_center(canv, cfg.font_s, 25, cfg.C_DIM, "NENHUM")
@@ -149,3 +150,4 @@ agenda_page = AgendaPage()
 
 def draw(canv):
     agenda_page.draw(canv)
+

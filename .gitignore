@@ -1,4 +1,28 @@
 user_config.json
+
+# Python bytecode/cache
 __pycache__/
-*.pyc
+*.py[cod]
+
+# Logs and coverage
 *.log
+.coverage
+htmlcov/
+
+# Local virtualenv/deps
+.venv/
+venv/
+.vendor/
+
+# Local tool/runtime artifacts
+.known_hosts
+codex_deploy_key
+codex_deploy_key.pub
+
+# Test/tool caches
+.pytest_cache/
+.mypy_cache/
+
+# OS files
+.DS_Store
+Thumbs.db

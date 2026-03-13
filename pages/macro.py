@@ -4,7 +4,8 @@ import utils
 import data
 
 def draw(canv):
-    st = data.dados['stocks']
+    state = data.get_state_snapshot()
+    st = state['stocks']
     
     # --- 1. DESTAQUE: NASDAQ (Tech) ---
     # Nome (NDX é a sigla comum para Nasdaq 100)
@@ -40,3 +41,5 @@ def draw(canv):
     
     # Valor DXY
     graphics.DrawText(canv, cfg.font_s, 1, 48, cfg.C_DIM, f"{dxy_val:.2f}".replace(".", ","))
+
+

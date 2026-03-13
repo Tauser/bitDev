@@ -14,6 +14,58 @@ function showToast(message, type = "info") {
   }, 4000);
 }
 
+const ADMIN_TOKEN_KEY = "bitdev_admin_token";
+const PROTECTED_ROUTES = ["/reiniciar", "/desligar", "/wifi_reset", "/salvar_wifi", "/logs"];
+
+function isProtectedRoute(url) {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url, window.location.origin);
+    return PROTECTED_ROUTES.includes(parsed.pathname);
+  } catch (_) {
+    return PROTECTED_ROUTES.includes(url);
+  }
+}
+
+function getAdminToken() {
+  return localStorage.getItem(ADMIN_TOKEN_KEY) || "";
+}
+
+function askAdminToken(force = false) {
+  let token = getAdminToken();
+  if (token && !force) return token;
+
+  const entered = window.prompt("Informe o token de administrador:", "");
+  if (!entered) return "";
+
+  token = entered.trim();
+  if (token) localStorage.setItem(ADMIN_TOKEN_KEY, token);
+  return token;
+}
+
+const _nativeFetch = window.fetch.bind(window);
+window.fetch = function patchedFetch(resource, options = {}) {
+  const url = typeof resource === "string" ? resource : resource?.url || "";
+  const protectedRoute = isProtectedRoute(url);
+  const nextOptions = { ...options };
+
+  if (protectedRoute) {
+    const token = askAdminToken();
+    const headers = new Headers(options.headers || {});
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    nextOptions.headers = headers;
+  }
+
+  return _nativeFetch(resource, nextOptions).then((response) => {
+    if (protectedRoute && (response.status === 401 || response.status === 403)) {
+      localStorage.removeItem(ADMIN_TOKEN_KEY);
+      showToast("Acesso administrativo negado. Token ausente ou invalido.", "error");
+      throw new Error("Acesso administrativo negado");
+    }
+    return response;
+  });
+};
+
 // --- FUNÇÕES GENÉRICAS DE AÇÃO ---
 function submitForm(event, url, formElement = null, shouldReload = false) {
   if (event) event.preventDefault();
